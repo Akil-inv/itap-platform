@@ -93,19 +93,43 @@ Last updated: 2026-09-11
 ### Completed
 
 - Project workspace and initial handover created.
+- Architecture established and documented in `docs/architecture.md`:
+  ITAP is built as configuration over an 8-block, domain-agnostic
+  capability catalog (`capabilities/`), so each block is reusable in
+  future, unrelated solutions.
+- Capability block 1, **Party/Identity**, scaffolded in
+  `capabilities/party_identity/`: domain model, `PartyRepo` port,
+  in-memory adapter, SQL adapter (SQLAlchemy Core, Postgres/SQLite
+  portable). 13 contract tests passing against both adapters.
 
 ### In Progress
 
-- Implementation has not started.
+- Capability block 2 (Assignment Engine) and block 3 (Rule/Decision
+  Engine) — next build slice.
 
 ### Next
 
-- Read the selected frameworks and establish the first build slice.
+- Build Assignment Engine + Rule Engine as the core testable state
+  machine (in-process YAML-driven rule adapter first; Drools/Flowable
+  are candidate future adapters behind the same ports, not required for
+  the first working slice).
+- Then RBAC Scope, layered over blocks 1-2 once both are stable.
 
 ### Known Issues
 
-- No implementation issues recorded yet.
+- None yet in code. Three CML platform questions are open and block only
+  Phase 2+ (Iceberg sync, Flowable/Drools adapters), not the current
+  slice — see "Open platform questions" in `docs/architecture.md`:
+  package/runtime install rights, internal pod-to-pod networking, and
+  whether Impala/Iceberg must be the live system of record or only the
+  governed downstream copy.
 
 ### Important Decisions
 
 - The project filesystem and this handover are authoritative.
+- Stack: Python + Streamlit, deployed as a CML Application. Postgres is
+  the system of record; Iceberg (v2, not Kudu) is the governed downstream
+  copy via a transactional outbox pattern, not the live OLTP store.
+- Architecture: hexagonal/ports-and-adapters per capability block. No
+  domain-specific vocabulary is allowed inside a capability block's core
+  code — see `docs/architecture.md` for the full rationale and block map.

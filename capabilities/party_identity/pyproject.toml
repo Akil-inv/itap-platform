@@ -1,0 +1,18 @@
+[project]
+name = "party-identity"
+version = "0.1.0"
+description = "Capability block 1: domain-agnostic actor registry (Party/Identity)."
+requires-python = ">=3.10"
+dependencies = [
+    "SQLAlchemy>=2.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7.0"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
