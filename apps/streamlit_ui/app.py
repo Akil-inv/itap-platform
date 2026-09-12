@@ -29,11 +29,11 @@ st.sidebar.title("ITAP")
 
 
 def _seed_demo_data() -> None:
-    owner = Party(party_type="functional_owner", display_name="Priya (Functional Owner)")
-    manager_a = Party(party_type="manager", display_name="Alex (Manager)")
-    manager_b = Party(party_type="manager", display_name="Bailey (Manager)")
-    agent_a = Party(party_type="agent", display_name="Casey (Agent)")
-    agent_b = Party(party_type="agent", display_name="Dana (Agent)")
+    owner = Party(party_type="functional_owner", display_name="Priya")
+    manager_a = Party(party_type="manager", display_name="Alex")
+    manager_b = Party(party_type="manager", display_name="Bailey")
+    agent_a = Party(party_type="agent", display_name="Casey")
+    agent_b = Party(party_type="agent", display_name="Dana")
 
     for party in (owner, manager_a, manager_b, agent_a, agent_b):
         party_repo.add(party)
@@ -42,6 +42,8 @@ def _seed_demo_data() -> None:
 
     services.assignment_service.create_assignment(agent_a.id, manager_a.id, date(2026, 1, 1))
     services.assignment_service.create_assignment(agent_b.id, manager_b.id, date(2026, 6, 1))
+    # Cross-team bifurcation demo: Casey also reports to Bailey concurrently.
+    services.assignment_service.create_assignment(agent_a.id, manager_b.id, date(2026, 2, 1))
 
 
 all_parties = (

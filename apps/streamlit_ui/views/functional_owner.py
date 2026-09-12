@@ -12,15 +12,25 @@ from party_helpers import party_label, safe_get_name
 def render(services, viewer: Viewer) -> None:
     st.title("Functional Owner")
 
-    tabs = st.tabs(["All Assignments", "Onboard & Assign", "Overdue Goal Setting", "Consolidated Scores"])
+    tabs = st.tabs(
+        [
+            "All Assignments",
+            "Org Structure",
+            "Onboard & Assign",
+            "Overdue Goal Setting",
+            "Consolidated Scores",
+        ]
+    )
 
     with tabs[0]:
         _all_assignments(services, viewer)
     with tabs[1]:
-        _onboard_and_assign(services)
+        _org_structure(services, viewer)
     with tabs[2]:
-        _overdue_goal_setting(services, viewer)
+        _onboard_and_assign(services)
     with tabs[3]:
+        _overdue_goal_setting(services, viewer)
+    with tabs[4]:
         _consolidated_scores(services, viewer)
 
 
@@ -41,6 +51,62 @@ def _all_assignments(services, viewer: Viewer) -> None:
         for a in assignments
     ]
     st.dataframe(rows, width='stretch')
+
+
+def _dot_escape(text: str) -> str:
+    return text.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _org_structure(services, viewer: Viewer) -> None:
+    """Manager -> Agent graph. Deliberately a graph, not a strict tree —
+    an Agent with concurrent, cross-team assignments has more than one
+    incoming edge, and that's the case this view exists to surface."""
+    assignments = services.scope.list_visible_assignments(viewer)
+    if not assignments:
+        st.write("No assignments yet.")
+        return
+
+    lines = ["digraph OrgStructure {", "rankdir=LR;", 'node [fontname="Helvetica"];']
+    seen_nodes: set[str] = set()
+    manager_counts: dict[str, int] = {}
+
+    for a in assignments:
+        manager_node = f"m_{a.manager_id}"
+        agent_node = f"a_{a.agent_id}"
+
+        if manager_node not in seen_nodes:
+            name = _dot_escape(safe_get_name(services.party_repo, a.manager_id))
+            lines.append(
+                f'{manager_node} [label="{name}", shape=box, style=filled, '
+                f'fillcolor="#EAF1FA", color="#4C78A8"];'
+            )
+            seen_nodes.add(manager_node)
+
+        if agent_node not in seen_nodes:
+            name = _dot_escape(safe_get_name(services.party_repo, a.agent_id))
+            lines.append(
+                f'{agent_node} [label="{name}", shape=ellipse, style=filled, '
+                f'fillcolor="#ECF7EA", color="#54A24B"];'
+            )
+            seen_nodes.add(agent_node)
+
+        active = a.state.value == "active"
+        style = "solid" if active else "dashed"
+        lines.append(f'{manager_node} -> {agent_node} [label="{a.state.value}", style={style}];')
+
+        if active:
+            manager_counts[agent_node] = manager_counts.get(agent_node, 0) + 1
+
+    lines.append("}")
+    st.graphviz_chart("\n".join(lines))
+    st.caption("Solid edge = active assignment. Dashed edge = closed.")
+
+    bifurcated_agent_ids = {
+        a.agent_id for a in assignments if manager_counts.get(f"a_{a.agent_id}", 0) > 1
+    }
+    if bifurcated_agent_ids:
+        names = [safe_get_name(services.party_repo, agent_id) for agent_id in bifurcated_agent_ids]
+        st.info("Currently reporting to more than one manager: " + ", ".join(names))
 
 
 def _onboard_and_assign(services) -> None:

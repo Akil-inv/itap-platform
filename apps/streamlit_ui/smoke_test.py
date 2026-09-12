@@ -26,6 +26,14 @@ assert not at.exception
 print("Viewing as:", select.value)
 assert "Functional Owner" in at.title[0].value
 
+# Org Structure tab content renders regardless of which tab is visually
+# selected (Streamlit runs the whole script every time; tabs are a
+# display-time grouping). Casey is seeded with two concurrent managers
+# (Alex, Bailey) — the bifurcation callout should name her.
+assert any("Casey" in i.value and "more than one manager" in i.value for i in at.info), (
+    "Expected a bifurcation callout naming Casey"
+)
+
 # Switch to viewing as the manager
 manager_option = next(o for o in select.options if "manager" in o.lower())
 at.sidebar.selectbox[0].set_value(manager_option).run()
