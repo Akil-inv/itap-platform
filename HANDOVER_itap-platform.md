@@ -93,27 +93,33 @@ Last updated: 2026-09-11
 ### Completed
 
 - Project workspace and initial handover created.
-- Architecture established and documented in `docs/architecture.md`:
-  ITAP is built as configuration over an 8-block, domain-agnostic
-  capability catalog (`capabilities/`), so each block is reusable in
-  future, unrelated solutions.
-- Capability block 1, **Party/Identity**, scaffolded in
-  `capabilities/party_identity/`: domain model, `PartyRepo` port,
-  in-memory adapter, SQL adapter (SQLAlchemy Core, Postgres/SQLite
-  portable). 13 contract tests passing against both adapters.
+- Architecture documented in `docs/architecture.md`: an 8-block capability
+  catalog design, with an explicit 2026-09-12 decision to prioritize a
+  working ITAP platform over premature genericity (build against ITAP's
+  own vocabulary now; extract/generalize only once a second real use case
+  needs it).
+- `capabilities/party_identity/`: domain model, `PartyRepo` port,
+  in-memory + SQL adapters. 13 contract tests passing.
+- `capabilities/assignment/`: ITAP's assignment lifecycle — Assignment
+  state machine (rule-guarded transitions), GoalSetting, ClosureRecord,
+  ReverseFeedback, application service. Covers manager-only extension,
+  cross-team bifurcation, 30-day min-elapsed closure gate, swap-to-new-
+  manager, and an overdue-goal-setting query. 23 tests passing across
+  in-memory + SQL (SQLAlchemy Core) adapters.
 
 ### In Progress
 
-- Capability block 2 (Assignment Engine) and block 3 (Rule/Decision
-  Engine) — next build slice.
+- RBAC Scope (3-way visibility: Functional Owner / Manager / Agent) —
+  next build slice, layered over `party_identity` + `assignment`.
 
 ### Next
 
-- Build Assignment Engine + Rule Engine as the core testable state
-  machine (in-process YAML-driven rule adapter first; Drools/Flowable
-  are candidate future adapters behind the same ports, not required for
-  the first working slice).
-- Then RBAC Scope, layered over blocks 1-2 once both are stable.
+- RBAC Scope, then a Streamlit UI thin enough to actually exercise the
+  three roles end-to-end.
+- Real notification/reminder dispatch (today only a queryable
+  "overdue goal setting" list exists, no delivery mechanism).
+- Outbox/Event Sync to Iceberg — deferred until the CML platform
+  questions below are answered.
 
 ### Known Issues
 

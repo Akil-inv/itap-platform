@@ -22,13 +22,18 @@ Each subdirectory here is one domain-agnostic capability block from
 | # | Directory | Status |
 |---|---|---|
 | 1 | `party_identity/` | Scaffolded — domain model, `PartyRepo` port, in-memory + SQL adapters, contract tests passing |
-| 2 | `assignment_engine/` | Not started |
-| 3 | `rule_engine/` | Not started |
-| 4 | `process_orchestration/` | Not started |
-| 5 | `scoring_closure/` | Not started |
-| 6 | `rbac_scope/` | Not started |
-| 7 | `notification_dispatch/` | Not started |
-| 8 | `outbox_sync/` | Not started |
+| 2/3 | `assignment/` | Built directly for ITAP (assignment lifecycle + rule-guarded transitions + goal setting + closure scoring + reverse feedback), 23 tests passing across in-memory + SQL adapters. Not yet generalized — see note below. |
+| 4 | process orchestration | Deferred — no timer/reminder dispatch yet; `list_overdue_goal_setting` exists as the query a future job would poll |
+| 5 | scoring & closure | Folded into `assignment/` for now (ClosureRecord, ReverseFeedback) |
+| 6 | RBAC scope | Not started |
+| 7 | notification dispatch | Not started |
+| 8 | outbox sync | Not started |
+
+**Note on genericity:** per project decision (2026-09-12), we're prioritizing
+a working ITAP platform over premature generalization. `assignment/` is
+built directly against ITAP's own vocabulary (Agent/Manager), not generic
+Subject/Holder naming — see `docs/architecture.md` for the full rationale.
+Extract and generalize a block only once a second, real use case needs it.
 
 See `docs/architecture.md` for what each block owns and why the boundary
 is drawn where it is.

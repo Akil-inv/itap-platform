@@ -6,14 +6,27 @@ rationale changes, update the corresponding row below in the same commit.
 
 ## Purpose
 
-ITAP (Intern Training & Assignment Platform) is the first real workload
-built against a **capability catalog**: a set of domain-agnostic building
-blocks that are meant to be reused, unmodified at the core, across future
-solutions (a work-order assignment system, a ticket assignment system, etc.)
-by supplying different configuration rather than different code.
+ITAP (Intern Training & Assignment Platform) was designed against an
+8-block **capability catalog** concept: domain-agnostic building blocks
+reusable, unmodified at the core, across future solutions by supplying
+different configuration rather than different code.
 
-If ITAP-specific vocabulary ever leaks into a capability block's core code,
-that is a defect in the cutoff, not an acceptable shortcut.
+**Decision (2026-09-12): build the working platform first.** Generalizing
+before a second, real use case exists is speculative — we won't know if a
+cutoff is actually correct until something else needs it. So blocks 2/3
+(Assignment Engine + Rule Engine) are built directly against ITAP's own
+vocabulary (Agent, Manager) rather than generic Subject/Holder naming, and
+block 5 (Scoring & Closure) is folded into the same package rather than
+split out. The ports/adapters discipline (below) is kept regardless — it's
+cheap and pays for itself even in a single app — but we are not paying the
+cost of full genericity, separate installable packages, or Drools/Flowable
+adapters until ITAP works and a second use case actually asks for reuse.
+
+The block map and cutoff principles below remain the target shape for
+*if and when* this gets taken apart into a genuine catalog. Until then,
+`capabilities/assignment/` intentionally violates the "no domain vocabulary"
+rule — that's accepted debt, not a mistake, and is the first thing to
+revisit during extraction.
 
 ## Governing principle: where to cut a block boundary
 
@@ -122,12 +135,32 @@ runnable against Postgres with an in-process rule adapter).
 
 ## Build order
 
-1. **Party/Identity** (this slice) — foundational, every other block
-   depends on it.
-2. **Assignment Engine + Rule Engine** — the core state machine, testable
-   headlessly with an in-memory Party repo.
-3. **RBAC Scope** — layered over 1 and 2 once both are stable.
-4. **Scoring & Closure**, **Notification Dispatch**, **Process
-   Orchestration** — in parallel once the core loop is proven.
+1. **Party/Identity** — done. Domain model, `PartyRepo` port, in-memory +
+   SQL adapters, contract tests passing.
+2. **Assignment Engine + Rule Engine + Scoring & Closure** — done, as
+   `capabilities/assignment/`. Covers: create assignment (goal-setting not
+   a gate), manager-only extension, cross-team bifurcation (independent
+   Assignment records per manager), min-elapsed-gated closure with
+   objective+subjective scoring, reverse feedback (gated only by elapsed
+   time, not assignment state), swap-to-new-manager, and an overdue
+   goal-setting query for a future reminder job. 23 tests passing across
+   in-memory + SQL adapters. Built directly with ITAP's vocabulary — see
+   "Decision" note above.
+3. **RBAC Scope** — next. Layer 3-way visibility (Functional Owner / own
+   Manager / own Agent) over Party + Assignment.
+4. **Notification Dispatch**, **Process Orchestration** (real
+   reminder timers, not just the query) — after RBAC, once there's a UI
+   to trigger from.
 5. **Outbox/Event Sync** — added once the CML platform questions above are
    answered.
+
+### Known MVP decisions to revisit (documented, not blocking)
+
+- Minimum elapsed period before closure/feedback: 30 days, configurable
+  per `AssignmentService(min_days_before_closure=...)` — not yet
+  surfaced as an admin-editable setting.
+- No escalation path yet if a manager never closes/scores an assignment;
+  only the overdue *goal-setting* query exists so far.
+- Manager leaving the org mid-assignment: not handled.
+- ClosureRecord and ReverseFeedback are append-only by design (no update
+  method) for audit/dispute integrity — confirmed acceptable for v1.
