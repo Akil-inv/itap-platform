@@ -6,13 +6,29 @@ from __future__ import annotations
 
 import streamlit as st
 
+_FONTS = (
+    '<link rel="preconnect" href="https://fonts.googleapis.com">'
+    '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?'
+    "family=Libre+Franklin:wght@600;700;800"
+    "&family=Source+Sans+3:wght@400;500;600;700"
+    '&display=swap">'
+)
+
+# Same type system as the approved front-page mockup: Libre Franklin for
+# headings, Source Sans 3 for body text — not the generic system-font
+# stack the app shipped with before that mockup existed.
 _CSS = """
 <style>
 #MainMenu, footer, header[data-testid="stHeader"] {visibility: hidden; height: 0;}
+[data-testid="stHeaderActionElements"] {display: none;}
 
 html, body, [class*="css"] {
-    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI",
-        Roboto, Helvetica, Arial, sans-serif;
+    font-family: "Source Sans 3", -apple-system, BlinkMacSystemFont,
+        "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+h1, h2, h3, h4 {
+    font-family: "Libre Franklin", "Source Sans 3", sans-serif;
 }
 
 .block-container {
@@ -21,7 +37,7 @@ html, body, [class*="css"] {
 }
 
 h1 {
-    font-weight: 700;
+    font-weight: 800;
     letter-spacing: -0.02em;
     margin-bottom: 0.25rem;
 }
@@ -40,6 +56,11 @@ div[data-testid="stForm"] {
 
 div[data-testid="stVerticalBlockBorderWrapper"] {
     border-radius: 12px !important;
+    box-shadow: 0 1px 2px rgba(27,34,51,0.04), 0 6px 20px rgba(27,34,51,0.06);
+}
+
+div[data-testid="stForm"] {
+    box-shadow: 0 1px 2px rgba(27,34,51,0.04), 0 6px 20px rgba(27,34,51,0.06);
 }
 
 .stButton > button, .stFormSubmitButton > button {
@@ -115,4 +136,5 @@ div[data-testid="stMetric"] {
 
 
 def inject() -> None:
+    st.markdown(_FONTS, unsafe_allow_html=True)
     st.markdown(_CSS, unsafe_allow_html=True)

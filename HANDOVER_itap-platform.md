@@ -302,6 +302,27 @@ Last updated: 2026-09-11
   admin action beyond the one-time default-Manager setup. See
   "Auto-creating the next Assignment" in `docs/architecture.md`.
 
+- Front page fidelity fix (2026-09-12, same day): the shipped front page
+  had drifted from the approved mockup in ways a side-by-side comparison
+  made obvious but a description hadn't — no custom typography was ever
+  wired in (the mockup's Libre Franklin/Source Sans 3 pairing via Google
+  Fonts), "Line Manager" shipped blue (`#4C78A8`) instead of the
+  mockup's teal (`#16707F`), and cards were flat where the mockup used a
+  soft shadow + 10-14px radius. Fixed in `theme.py` (fonts + shadow
+  applied app-wide, so every bordered container — not just the front
+  page — picks it up) and `home.py` (role colors corrected to match the
+  mockup's `--admin`/`--manager`/`--intern` tokens exactly: `#333F6B`/
+  `#16707F`/`#3F7D57`). Also hid Streamlit's auto-injected "copy anchor
+  link" icon (`[data-testid="stHeaderActionElements"]`), which leaked
+  onto the raw `<h1>` and never appeared in the mockup. Verified with a
+  fresh Playwright screenshot compared directly against the mockup's own
+  saved HTML — not just a description of what changed. Known,
+  deliberately out-of-scope leftover: `journey.py`'s older per-assignment
+  stepper (predates the mockup) still uses blue for "current" state,
+  inconsistent with the new teal "current" used everywhere the mockup's
+  design applies (journey curve, front page) — not touched here since it
+  wasn't part of what was actually agreed to in the mockup review.
+
 ### In Progress
 
 - Nothing mid-flight; the party_identity + assignment + rbac_scope +
