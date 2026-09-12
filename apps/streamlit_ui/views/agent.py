@@ -54,6 +54,7 @@ from party_identity.domain import Party
 from rbac_scope import Viewer
 
 import journey_curve
+import score_curve
 from journey import render_stepper, stage_index
 from party_helpers import safe_get_name
 from person_row import avatar_html
@@ -262,10 +263,10 @@ def _own_score_and_milestones(services, viewer: Viewer, current_party: Party) ->
         st.caption("No scored episodes yet.")
         return
 
-    chart_data = {
-        f"Ep. {i + 1}": m["score"] for i, m in enumerate(milestones)
-    }
-    st.bar_chart(chart_data)
+    curve_html = score_curve.render_html(
+        [{"score": m["score"], "label": f"Ep. {i + 1}"} for i, m in enumerate(milestones)]
+    )
+    st.markdown(curve_html, unsafe_allow_html=True)
     for i, m in enumerate(milestones):
         st.write(
             f"- **Episode {i + 1}** — {m['kind']} with {m['manager']}, "
