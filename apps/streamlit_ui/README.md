@@ -204,6 +204,82 @@ convention as `test_admin_journey_ui.py`) and
 into the new `manager_associate.py` page (its old inline per-assignment
 goal-setting/withdraw flow moved there).
 
+## Associate's own screens + admin approvals (Phase 4 of the redesign)
+
+`views/agent.py` ("My Journey") was rewritten from a single flat page
+into four tabs, closing the last gaps in
+`docs/associate_journey_redesign.md`'s "Associate flow": **Profile**
+(self-editable bio/photo/experience/highlights/skills — self-added
+skills always recorded as `SkillSource.SELF`, no verification step, per
+spec), **My Progress** (the existing rotation-plan curve, plus the
+associate's own aggregate score and score milestones — visible only to
+the owning Associate), **Current Episode(s)** (goal text editable
+pre-freeze, locked once the manager freezes it — the missing half of
+Phase 3's Goals tab), and **Leave & Interests** (annual leave with no
+approval workflow, and Teams/CCA interest flagging worded as a signal,
+never a placement request).
+
+**Score milestones**: a plain `st.bar_chart` (one bar per closed, scored
+episode, oldest first) plus a parallel text list underneath it giving
+the exact kind/manager/date/score — chosen over trying to match the
+approved mockup's SVG learning-curve pixel-for-pixel, which the task
+explicitly didn't require in Streamlit. No new domain logic: this reads
+`ScopedAssignmentQueries.get_closure_record` for every closed-and-
+completed Assignment the associate has, sorted by close date.
+
+**Current Episode(s)' Goal Setting block** writes to the exact same
+`GoalSetting` record the manager's Goals tab (`views/manager_associate.
+py`) reads and freezes, via the same `AssignmentService.
+record_goal_setting` upsert — either side can key in the agreed text
+before the freeze, only the manager can freeze it, and once frozen
+neither side can touch it again without an admin reopen (see Approvals,
+below).
+
+**Interest flagging → the Phase 2 admin badge**: flagging or unflagging
+a Team/CCA here calls `CatalogService.flag_interest`/`unflag_interest`
+directly — the same calls that already move `InterestActivity.
+raised_at` forward (unchanged since Phase 1). The admin's Associates
+list "interest changed" badge (`has_unseen_interest_change`, built in
+Phase 2) reads that same field, so a flag from this new page lights up
+that badge with zero new wiring on the admin side — verified end to end
+in `test_associate_and_approvals_ui.py`, not just by code inspection.
+
+**Admin Approvals** (`views/approvals.py`, new top-level tab) closes the
+gap both Phase 2 and Phase 3 explicitly deferred: a place to act on
+manager-raised `ChangeRequest`s and reopen a frozen Goal Setting/Review
+Score. **Judgment call — its own tab, not folded into Setup**: Setup is
+explicitly "not mixed into daily operational screens" per the spec
+(configure-once, low-churn master data); Approvals is a day-to-day
+operational queue instead, so it gets its own tab next to Setup rather
+than living inside it.
+
+- **Pending requests**: every PENDING `ChangeRequest`
+  (`AssignmentService.list_pending_change_requests`) with Approve/Deny
+  buttons. Deny opens a small popover with an optional reason first — an
+  irreversible negative decision gets a lightweight confirm step; Approve
+  doesn't need one. Approving a Closure request also runs the same
+  rotation-plan auto-advance every other closure path already triggers.
+- **Reopen a frozen Goal Setting or Review Score**: pick any Assignment,
+  see whether its Goal Setting/Review Score is frozen, reopen either one
+  (`reopen_goal_setting`/`reopen_review_score`).
+
+The manager's two "(admin only)" reopen buttons on `views/
+manager_associate.py` stay disabled — reopening is still never
+self-service for either side — but now read "Ask admin to reopen
+(Functional Owner → Approvals)" instead of a bare TODO, since there's a
+real screen to point at.
+
+Covered end to end by `test_associate_and_approvals_ui.py` (same
+`AppTest` convention as the other three UI test scripts) and
+`screenshot_associate_and_approvals.py` (same Playwright convention as
+the other screenshot scripts).
+
+With this phase, every section of `docs/associate_journey_redesign.md`'s
+Admin/Manager/Associate flows has a corresponding screen; only the
+items the spec itself lists as "Explicitly deferred / out of scope"
+(email deep-linking, resume file storage, exact battery-bar rendering
+past 2 years) remain unbuilt, by design.
+
 ## Running locally
 
 ```bash
@@ -367,6 +443,17 @@ above:
 
 ```bash
 rm -f test_manager_journey_ui.db && python test_manager_journey_ui.py
+```
+
+`test_associate_and_approvals_ui.py` covers the Phase 4 screens (the
+associate's own "My Journey" — profile edit, own-score visibility, goal
+edit pre-freeze/locked post-freeze, leave declaration, interest
+flagging — and the admin's Approvals tab — approve, deny, and reopen a
+frozen Goal Setting) — see "Associate's own screens + admin approvals"
+above:
+
+```bash
+rm -f test_associate_and_approvals_ui.db && python test_associate_and_approvals_ui.py
 ```
 
 ## Visual verification (`screenshot.py`)

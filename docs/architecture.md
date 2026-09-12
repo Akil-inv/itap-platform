@@ -745,6 +745,156 @@ page instead of the old inline per-assignment panel,
 `test_admin_journey_ui.py`, and all `capabilities/*` pytest suites, 253
 tests total) still pass.
 
+### Associate-journey associate UI + admin approvals (2026-09-12, associate-journey redesign, Phase 4)
+
+Closed the last two gaps from `docs/associate_journey_redesign.md`: the
+associate's own screens (`views/agent.py`, previously a single flat "My
+Journey" page unchanged since before the redesign) and the admin
+approvals screen both Phase 2 and Phase 3 explicitly deferred. Manager
+(Phase 3) and admin Portfolio/Setup (Phase 2) screens are otherwise
+unchanged.
+
+**Piece A — `views/agent.py` rewritten as "My Journey"**, four tabs
+(Profile / My Progress / Current Episode(s) / Leave & Interests) over
+`catalog_service` + `assignment_service` + `ScopedAssignmentQueries`,
+matching the approved mockup's structure as real Streamlit widgets
+rather than its SVG pixel-for-pixel:
+
+- **Profile** — the same self-editable bio/photo/experience/project-
+  highlights/skills shape as the admin's Portfolio profile section
+  (`views/associate_portfolio.py`), but pointed at the signed-in
+  Associate's own `agent_id` and with one deliberate restriction: this
+  page only ever calls `declare_associate_skill(..., SkillSource.SELF)`
+  — an associate can never claim an engagement-sourced skill for
+  themselves from their own page; that source only ever comes from the
+  admin/manager side. Self-added skills need no verification (per spec)
+  and render with the same "self-added" quiet label the admin's
+  Portfolio page already used.
+- **My Progress** — the existing rotation-plan-preview curve (unchanged
+  from before this pass) plus two new sections: the associate's own
+  aggregate score (`ScopedAssignmentQueries.consolidated_score`, which
+  already refuses a Manager or a different Agent — the Agent asking
+  about themselves always succeeds, so no new permission code was
+  needed) and **score milestones**. **Judgment call — visualization**:
+  the spec asks for "individual past episode scores... as milestones
+  along their own learning curve" but explicitly doesn't require
+  matching the mockup's SVG curve pixel-for-pixel in Streamlit. Chose a
+  plain `st.bar_chart` (one bar per closed, scored episode, oldest
+  first) plus a parallel ordered text list (kind, manager, close date,
+  score) underneath it — the chart conveys "progression over time" at a
+  glance, the list gives the exact numbers and is what an AppTest can
+  actually assert against (Streamlit's native chart widgets aren't
+  content-inspectable the way `st.markdown`/`st.write` are). No new
+  domain logic: milestones are just `ScopedAssignmentQueries.
+  get_closure_record` per closed-and-completed Assignment, sorted by
+  close date.
+- **Current Episode(s)** — same per-Assignment expander/stepper as the
+  page had before, but the Goal Setting block is now the missing half of
+  Phase 3's Goals tab: pre-freeze, an editable form
+  (`AssignmentService.record_goal_setting` — the exact same upsert the
+  manager's Goals tab calls) lets the associate key in their own
+  proposed goals per spec ("the associate fills in proposed goals... and
+  sees them once the manager agrees and freezes them"); once
+  `GoalSetting.frozen` is true, the field disappears entirely and only a
+  locked, read-only view remains. No new record type — this writes to
+  the identical `GoalSetting` row the manager's `freeze_goal_setting`
+  action reads and locks, which is the whole point: either side can key
+  in the agreed text before the freeze, only the manager can freeze it,
+  and once frozen neither can touch it again without an admin reopen
+  (Piece B, below). The existing closure-score display and reverse-
+  feedback form are otherwise unchanged.
+- **Leave & Interests** — **Annual leave**: a plain start/end date-range
+  form plus a chronological list, `CatalogService.declare_leave`/
+  `list_leave` directly, no approval step or status field anywhere in
+  the UI (per spec: purely informational). **Interest flagging**: every
+  Team and CCA activity in the Setup catalogs renders as a row with a
+  toggle button — "Flag interest: {name}" / "Remove interest: {name}" —
+  calling `flag_interest`/`unflag_interest`. Copy above the section and
+  on each row is deliberately explicit ("a general interest signal
+  only... doesn't let you choose your next placement") per the spec's
+  hardest requirement here: the UI must never imply flagging is a
+  placement request. **This is exactly what feeds the Phase 2 admin
+  highlight**: `flag_interest`/`unflag_interest` both already call
+  `CatalogService._touch_raised` internally (unchanged from Phase 1),
+  which moves `InterestActivity.raised_at` forward; the admin's
+  Associates list badge (`has_unseen_interest_change`, built in Phase 2)
+  reads that same field, so a flag/unflag from this new page lights up
+  the existing badge with no new wiring on the admin side at all —
+  verified end to end in both the new AppTest suite and the Playwright
+  screenshots (below), not just by code inspection.
+
+**Piece B — Admin Approvals (`views/approvals.py`, new top-level tab)**.
+**Judgment call — its own tab, not folded into Setup**: Setup is
+explicitly "not mixed into daily operational screens" per the spec —
+Skills/Teams/CCA are configure-once-revisit-occasionally master data.
+Approvals is the opposite: a queue of day-to-day, per-Associate/
+per-Manager actions an admin works through regularly — much closer in
+"rate of change" to the Associates list or the Overdue tab than to
+Setup, per the same cutoff heuristic this document already uses
+elsewhere. It sits in the nav right after Setup. Two sections:
+
+- **Pending requests** — every PENDING `ChangeRequest`
+  (`AssignmentService.list_pending_change_requests`, unused by any UI
+  since Phase 3 added it) with Approve/Deny buttons calling
+  `approve_change_request`/`deny_change_request` directly. Deny opens a
+  small `st.popover` with an optional reason text area rather than
+  denying on a single click — an irreversible negative decision on
+  someone else's request gets a lightweight confirmation step; Approve
+  doesn't need one since it's exactly what the requesting Manager
+  already asked for. Approving a CLOSURE request also runs
+  `rotation_plan_bridge.advance_linked_stage_if_closed` (same as every
+  other place an Assignment can close), which Phase 3's deferral note
+  hadn't needed to consider since nothing called `approve_change_request`
+  from a view yet.
+- **Reopen a frozen Goal Setting or Review Score** — a single Assignment
+  picker (every Assignment, admin sees all per RBAC) showing whether its
+  `GoalSetting`/`ReviewScore` is frozen, with a Reopen button for each
+  that's actually frozen (`reopen_goal_setting`/`reopen_review_score`).
+  No new query was needed on the repo — `list_all()` (already used by
+  `ScopedAssignmentQueries` for the Functional Owner) plus the existing
+  per-Assignment `get_goal_setting`/`get_review_score` getters were
+  enough.
+
+**Manager's disabled stub buttons, updated to point somewhere real**:
+`views/manager_associate.py`'s two "(admin only)" reopen buttons stay
+disabled — reopening is still never a self-service action for either
+side, per spec — but their label/help text changed from a bare "TODO,
+not wired yet" to "Ask admin to reopen (Functional Owner → Approvals)",
+now that there's an actual admin screen to point at.
+`test_manager_journey_ui.py` was updated for the new button label.
+
+Verified with a new `test_associate_and_approvals_ui.py` (`AppTest`,
+same convention as the other three UI test scripts) covering: self-
+editing the profile and adding a self-declared skill, the own-aggregate-
+score section rendering correctly with no closed episodes yet, an
+already-frozen episode's goals staying locked while an un-frozen one
+gets a real editable field, declaring leave, flagging a Team's interest
+and confirming it flips the admin's highlight badge, approving one
+pending request and denying another through the real popover form, and
+reopening a frozen Goal Setting whose effect is confirmed from the
+*manager's* page (the field becomes editable again) rather than just
+trusting the reopen call didn't raise. Also verified with
+`screenshot_associate_and_approvals.py` (same Playwright convention as
+the other screenshot scripts) against the running server — all four "My
+Journey" tabs, the interest flag toggling live, the admin's badge
+lighting up, and the Approvals tab showing a real pending request. All
+pre-existing suites (`smoke_test.py`, `test_bulk_import.py`,
+`test_rotation_plan_bridge.py`, `test_admin_journey_ui.py`,
+`test_manager_journey_ui.py`, and all `capabilities/*` pytest suites —
+67+69+13+13+91 = 253 tests) still pass unchanged.
+
+**Spec coverage after this phase**: every section of
+`docs/associate_journey_redesign.md`'s Admin/Manager/Associate flows and
+its cross-cutting rules table now has a corresponding screen. The only
+items still explicitly out of scope are the ones the spec itself lists
+under "Explicitly deferred / out of scope for this pass" — email/mail-
+page deep-linking, resume file storage, and exact battery-bar rendering
+past 2 years — none of which any phase was ever asked to build. Two
+smaller, pre-existing "known MVP decisions to revisit" (real
+notification dispatch/process orchestration for reminder timers, and
+real auth) remain open platform questions tracked earlier in this
+document, not new gaps introduced here.
+
 ### Resolved via scenario-based gap analysis (2026-09-12)
 
 The following gaps were found by walking every role through every

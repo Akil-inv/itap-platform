@@ -16,6 +16,7 @@ from associate_status import AssociateStatus, classify, current_team_label
 from battery import render_html as render_battery_html
 from party_helpers import disambiguate_labels, safe_get_name
 from rotation_plan.domain import AlreadyEnrolled, RotationPlanNotFound
+from views import approvals as approvals_view
 from views import associate_portfolio
 from views import setup as setup_view
 
@@ -47,6 +48,7 @@ def render(services, viewer: Viewer, current_party: Party) -> None:
             "Org Structure",
             "Onboard & Assign",
             "Setup",
+            "Approvals",
             "Rotation Plans",
             "Bulk Setup",
             "Overdue",
@@ -64,14 +66,16 @@ def render(services, viewer: Viewer, current_party: Party) -> None:
     with tabs[3]:
         setup_view.render(services)
     with tabs[4]:
-        _rotation_plans(services)
+        approvals_view.render(services, viewer)
     with tabs[5]:
-        _bulk_setup(services)
+        _rotation_plans(services)
     with tabs[6]:
-        _overdue(services, viewer)
+        _bulk_setup(services)
     with tabs[7]:
-        _manager_handoff(services, viewer)
+        _overdue(services, viewer)
     with tabs[8]:
+        _manager_handoff(services, viewer)
+    with tabs[9]:
         _consolidated_scores(services, viewer)
 
 

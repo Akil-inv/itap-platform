@@ -213,13 +213,15 @@ def _goals_section(services, viewer, assignment) -> None:
             else "Agreed."
         )
         st.button(
-            "Reopen for editing (admin only)",
+            "Ask admin to reopen (Functional Owner → Approvals)",
             disabled=True,
             key=f"reopen_goals_stub_{assignment.id}",
             help=(
-                "TODO: not wired in this pass — an admin-approval screen "
-                "would call AssignmentService.reopen_goal_setting. See "
-                "docs/architecture.md's Phase 3 section."
+                "Reopening is admin-only, never a self-service action for "
+                "either side — an admin does this from the Functional "
+                "Owner's Approvals tab (AssignmentService."
+                "reopen_goal_setting). See docs/architecture.md's Phase 4 "
+                "section."
             ),
         )
         return
@@ -280,13 +282,15 @@ def _review_scoring_section(services, viewer, assignment) -> None:
         if review_score.notes:
             st.caption(review_score.notes)
         st.button(
-            "Reopen for correction (admin only)",
+            "Ask admin to reopen (Functional Owner → Approvals)",
             disabled=True,
             key=f"reopen_score_stub_{assignment.id}",
             help=(
-                "TODO: not wired in this pass — an admin-approval screen "
-                "would call AssignmentService.reopen_review_score. See "
-                "docs/architecture.md's Phase 3 section."
+                "Reopening is admin-only, never a self-service action for "
+                "either side — an admin does this from the Functional "
+                "Owner's Approvals tab (AssignmentService."
+                "reopen_review_score). See docs/architecture.md's Phase 4 "
+                "section."
             ),
         )
     else:

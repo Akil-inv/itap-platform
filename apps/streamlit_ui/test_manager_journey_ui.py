@@ -75,7 +75,8 @@ assert any("frozen" in s.value.lower() for s in at.success), "Expected a frozen 
 # Frozen -> no more editable goal text area, only the disabled admin-reopen stub.
 assert not any(w.label.startswith("Goals") for w in at.text_area)
 assert any(
-    b.label == "Reopen for editing (admin only)" and b.disabled for b in at.button
+    b.label == "Ask admin to reopen (Functional Owner → Approvals)" and b.disabled
+    for b in at.button
 ), "Expected a disabled admin-reopen stub for goals"
 
 print("Goals freeze: OK")
@@ -91,7 +92,8 @@ assert any("4.5" in s.value or "4.50" in s.value for s in at.success), (
     "Expected the submitted objective score in a success message"
 )
 assert any(
-    b.label == "Reopen for correction (admin only)" and b.disabled for b in at.button
+    b.label == "Ask admin to reopen (Functional Owner → Approvals)" and b.disabled
+    for b in at.button
 ), "Expected a disabled admin-reopen stub for the score"
 
 print("Review & Scoring submit: OK")
