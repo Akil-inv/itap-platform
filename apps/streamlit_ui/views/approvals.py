@@ -126,17 +126,36 @@ def _pending_requests_section(services, viewer) -> None:
 
 def _reopen_section(services) -> None:
     assignments = services.assignment_repo.list_all()
-    if not assignments:
-        st.write("No assignments yet.")
+
+    # Only list assignments that actually have something frozen to
+    # reopen — picking blind from every assignment in the system (most
+    # of which have nothing frozen) was the exact confusion a real admin
+    # ran into: the dropdown gave no way to tell which one was the right
+    # one without already knowing, so a wrong guess just read "not
+    # frozen" with no hint of where to look instead.
+    frozen = []
+    for a in assignments:
+        goal_setting = services.assignment_repo.get_goal_setting(a.id)
+        review_score = services.assignment_repo.get_review_score(a.id)
+        goal_frozen = goal_setting is not None and goal_setting.frozen
+        score_frozen = review_score is not None and review_score.frozen
+        if goal_frozen or score_frozen:
+            frozen.append((a, goal_frozen, score_frozen))
+
+    if not frozen:
+        st.write("Nothing is currently frozen — no assignment needs reopening.")
         return
 
     labels = {}
-    for a in sorted(assignments, key=lambda a: a.start_date, reverse=True):
+    for a, goal_frozen, score_frozen in sorted(frozen, key=lambda t: t[0].start_date, reverse=True):
         agent_name = safe_get_name(services.party_repo, a.agent_id)
         manager_name = safe_get_name(services.party_repo, a.manager_id)
+        frozen_what = " & ".join(
+            filter(None, ["goals" if goal_frozen else None, "score" if score_frozen else None])
+        )
         label = (
-            f"{agent_name} → {manager_name} ({a.kind.value}, {a.state.value}, "
-            f"started {a.start_date}) · {str(a.id)[:8]}"
+            f"{agent_name} → {manager_name} ({a.kind.value}, {a.state.value}) — "
+            f"{frozen_what} frozen · {str(a.id)[:8]}"
         )
         labels[label] = a
 
