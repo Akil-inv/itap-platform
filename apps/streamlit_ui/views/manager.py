@@ -12,7 +12,8 @@ from party_helpers import party_label, safe_get_name
 
 
 def render(services, viewer: Viewer, current_party: Party) -> None:
-    st.title(f"Manager: {current_party.display_name}")
+    st.title("My Team")
+    st.caption(f"Welcome back, {current_party.display_name}.")
 
     assignments = services.scope.list_visible_assignments(viewer)
     if not assignments:

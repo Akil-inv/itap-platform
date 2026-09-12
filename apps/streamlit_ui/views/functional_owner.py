@@ -6,11 +6,13 @@ import streamlit as st
 from party_identity.domain import Party
 from rbac_scope import Viewer
 
+import org_tree
 from party_helpers import party_label, safe_get_name
 
 
-def render(services, viewer: Viewer) -> None:
-    st.title("Functional Owner")
+def render(services, viewer: Viewer, current_party: Party) -> None:
+    st.title("Workforce Overview")
+    st.caption(f"Welcome back, {current_party.display_name}.")
 
     tabs = st.tabs(
         [
@@ -54,59 +56,47 @@ def _all_assignments(services, viewer: Viewer) -> None:
         st.dataframe(rows, width='stretch')
 
 
-def _dot_escape(text: str) -> str:
-    return text.replace("\\", "\\\\").replace('"', '\\"')
-
-
 def _org_structure(services, viewer: Viewer) -> None:
-    """Manager -> Agent graph. Deliberately a graph, not a strict tree —
-    an Agent with concurrent, cross-team assignments has more than one
-    incoming edge, and that's the case this view exists to surface."""
-    assignments = services.scope.list_visible_assignments(viewer)
-    if not assignments:
-        st.write("No assignments yet.")
+    """The whole current org: Functional Owner(s) -> Managers -> Agents.
+    Shows every Manager and every Agent (even unassigned ones, as
+    unconnected cards) so gaps in the structure are visible too — not
+    just the active reporting lines, which come from active assignments
+    only. An Agent with concurrent, cross-team assignments naturally gets
+    more than one incoming edge; this is a graph, not a strict tree."""
+    owners_parties = services.party_repo.list_by_type("functional_owner")
+    manager_parties = services.party_repo.list_by_type("manager")
+    agent_parties = services.party_repo.list_by_type("agent")
+
+    if not manager_parties and not agent_parties:
+        st.write("No org structure yet — onboard some people first.")
         return
 
-    lines = ["digraph OrgStructure {", "rankdir=LR;", 'node [fontname="Helvetica"];']
-    seen_nodes: set[str] = set()
+    owners = [(f"o_{p.id.hex}", p.display_name) for p in owners_parties]
+    managers = [(f"m_{p.id.hex}", p.display_name) for p in manager_parties]
+    agents = [(f"a_{p.id.hex}", p.display_name) for p in agent_parties]
+
+    edges_owner_manager = [
+        (f"o_{o.id.hex}", f"m_{m.id.hex}") for o in owners_parties for m in manager_parties
+    ]
+
+    assignments = services.scope.list_visible_assignments(viewer)
+    active = [a for a in assignments if a.state.value == "active"]
+    edges_manager_agent = [
+        (f"m_{a.manager_id.hex}", f"a_{a.agent_id.hex}") for a in active
+    ]
+
+    org_tree.render(owners, managers, agents, edges_owner_manager, edges_manager_agent)
+    st.caption(
+        "Showing current structure only (active assignments). "
+        "Hover a card to trace its connections."
+    )
+
     manager_counts: dict[str, int] = {}
-
-    for a in assignments:
-        # DOT identifiers can't contain hyphens unless quoted; UUIDs are
-        # hyphenated, so use .hex (no hyphens) for the node id itself —
-        # the human-readable name still goes in the label.
-        manager_node = f"m_{a.manager_id.hex}"
-        agent_node = f"a_{a.agent_id.hex}"
-
-        if manager_node not in seen_nodes:
-            name = _dot_escape(safe_get_name(services.party_repo, a.manager_id))
-            lines.append(
-                f'{manager_node} [label="{name}", shape=box, style=filled, '
-                f'fillcolor="#EAF1FA", color="#4C78A8"];'
-            )
-            seen_nodes.add(manager_node)
-
-        if agent_node not in seen_nodes:
-            name = _dot_escape(safe_get_name(services.party_repo, a.agent_id))
-            lines.append(
-                f'{agent_node} [label="{name}", shape=ellipse, style=filled, '
-                f'fillcolor="#ECF7EA", color="#54A24B"];'
-            )
-            seen_nodes.add(agent_node)
-
-        active = a.state.value == "active"
-        style = "solid" if active else "dashed"
-        lines.append(f'{manager_node} -> {agent_node} [label="{a.state.value}", style={style}];')
-
-        if active:
-            manager_counts[agent_node] = manager_counts.get(agent_node, 0) + 1
-
-    lines.append("}")
-    st.graphviz_chart("\n".join(lines))
-    st.caption("Solid edge = active assignment. Dashed edge = closed.")
-
+    for a in active:
+        key = f"a_{a.agent_id.hex}"
+        manager_counts[key] = manager_counts.get(key, 0) + 1
     bifurcated_agent_ids = {
-        a.agent_id for a in assignments if manager_counts.get(f"a_{a.agent_id.hex}", 0) > 1
+        a.agent_id for a in active if manager_counts.get(f"a_{a.agent_id.hex}", 0) > 1
     }
     if bifurcated_agent_ids:
         names = [safe_get_name(services.party_repo, agent_id) for agent_id in bifurcated_agent_ids]

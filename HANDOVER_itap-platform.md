@@ -127,18 +127,36 @@ Last updated: 2026-09-11
   default chrome) and `journey.py` (a 3-stage stepper — Goal Setting →
   Active → Closed — reading the existing Assignment state, no new states
   added) replace the flat, unordered form dump in Manager/Agent views
-  with a visible per-assignment journey. Verified with real Playwright
-  screenshots (not just AppTest, which doesn't render CSS) — caught and
-  fixed two real bugs in the process: `st.graphviz_chart` needs the
-  `graphviz` Python package installed or it silently renders empty, and
-  DOT node ids built from UUIDs must use `.hex` (hyphens break unquoted
-  DOT identifiers).
+  with a visible per-assignment journey.
+- Product feedback pass (2026-09-12, same day): three follow-up fixes
+  based on user review of the polish pass —
+  1. `org_tree.py` replaces the graphviz Manager-Agent diagram with a
+     hand-built inline SVG showing the **whole current org**: Functional
+     Owner(s) → Managers → Agents, three tiers, rounded cards, smooth
+     bezier connectors, hover-to-trace highlighting, zero external/CDN
+     dependency (confirmed by uninstalling `graphviz` and re-running the
+     smoke test — still passes).
+  2. `home.py`: a real landing/sign-in page (grouped by role, one button
+     per person) replaces the sidebar "View as" dropdown. Identity now
+     lives in `st.session_state`, not sidebar navigation.
+  3. Page headings are product/task-oriented ("Workforce Overview", "My
+     Team", "My Journey") instead of the role name; the signed-in
+     person's name moved to a "Welcome back" subheading and a persistent
+     header chip ("ITAP · Signed in as {name} ({role})" + "Switch
+     person").
+
+  Verified with real Playwright screenshots throughout (AppTest doesn't
+  render CSS/JS, so visual claims need a real browser) — this caught and
+  fixed two real bugs: `st.graphviz_chart` needed the `graphviz` Python
+  package installed or it silently rendered empty (moot now — replaced
+  entirely), and DOT node ids built from UUIDs needed `.hex` (hyphens
+  break unquoted DOT identifiers) before being replaced.
 
 ### In Progress
 
 - Nothing mid-flight; the party_identity + assignment + rbac_scope +
-  Streamlit UI slice (including the journey/theme pass) is complete and
-  demoable.
+  Streamlit UI slice (including the journey/theme/org-tree/landing-page
+  pass) is complete and demoable.
 
 ### Next
 

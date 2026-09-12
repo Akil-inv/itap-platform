@@ -1,14 +1,21 @@
 """Not a unit test suite (those live in capabilities/*/tests) — a
 throwaway script proving the wired-together Streamlit app actually runs
-end to end: seed data, view as each of the three roles, exercise the
-main actions on each. Delete or replace with a real AppTest suite once
-the UI stabilizes.
+end to end: seed data, sign in as each of the three roles via the
+landing page, exercise the main actions on each. Delete or replace with
+a real AppTest suite once the UI stabilizes.
 """
 import os
 
 os.environ["DATABASE_URL"] = "sqlite:///./smoke_test.db"
 
 from streamlit.testing.v1 import AppTest
+
+
+def click_button_labeled(at, label):
+    matches = [b for b in at.button if b.label == label]
+    assert matches, f"No button labeled {label!r} found. Have: {[b.label for b in at.button]}"
+    return matches[0].click().run()
+
 
 at = AppTest.from_file("app.py", default_timeout=15)
 at.run()
@@ -18,13 +25,13 @@ assert "Seed demo data" in str(at.button[0].label)
 at.button[0].click().run()
 assert not at.exception, f"Seeding raised: {at.exception}"
 
-# First party in the sidebar selectbox should be the functional owner
-select = at.sidebar.selectbox[0]
-assert "functional_owner" in select.value or "Functional Owner" in select.value
-assert not at.exception
+# No viewer chosen yet -> the landing/sign-in page renders
+assert "ITAP" in "".join(m.value for m in at.markdown)
+assert any("Priya" == b.label for b in at.button), "Expected a sign-in button for Priya"
 
-print("Viewing as:", select.value)
-assert "Functional Owner" in at.title[0].value
+click_button_labeled(at, "Priya")
+assert not at.exception, f"Signing in as Priya raised: {at.exception}"
+assert "Workforce Overview" in at.title[0].value
 
 # Org Structure tab content renders regardless of which tab is visually
 # selected (Streamlit runs the whole script every time; tabs are a
@@ -34,28 +41,26 @@ assert any("Casey" in i.value and "more than one manager" in i.value for i in at
     "Expected a bifurcation callout naming Casey"
 )
 
-# Switch to viewing as the manager
-manager_option = next(o for o in select.options if "manager" in o.lower())
-at.sidebar.selectbox[0].set_value(manager_option).run()
-assert not at.exception, f"Switching to manager raised: {at.exception}"
-assert "Manager:" in at.title[0].value
-
-# Still viewing as the manager: record goal setting through the real form
-at.sidebar.selectbox[0].set_value(manager_option).run()
+# Switch person -> sign in as the manager, Alex
+click_button_labeled(at, "Switch person")
 assert not at.exception
+click_button_labeled(at, "Alex")
+assert not at.exception, f"Signing in as Alex raised: {at.exception}"
+assert "My Team" in at.title[0].value
+
+# Record goal setting through the real form
 goal_text_areas = [w for w in at.text_area if w.label.startswith("Goals")]
 assert goal_text_areas, "Expected a goal-setting text area for the manager's assignment"
 goal_text_areas[0].set_value("Ship the onboarding module").run()
-submit_buttons = [b for b in at.button if b.label == "Record goal setting"]
-assert submit_buttons, "Expected a 'Record goal setting' button"
-submit_buttons[0].click().run()
+click_button_labeled(at, "Record goal setting")
 assert not at.exception, f"Recording goal setting raised: {at.exception}"
 
-# Switch to viewing as the agent
-agent_option = next(o for o in select.options if "agent" in o.lower())
-at.sidebar.selectbox[0].set_value(agent_option).run()
-assert not at.exception, f"Switching to agent raised: {at.exception}"
-assert "Agent:" in at.title[0].value
+# Switch person -> sign in as the agent, Casey
+click_button_labeled(at, "Switch person")
+assert not at.exception
+click_button_labeled(at, "Casey")
+assert not at.exception, f"Signing in as Casey raised: {at.exception}"
+assert "My Journey" in at.title[0].value
 assert any("Ship the onboarding module" in m.value for m in at.markdown), (
     "Agent should see the goal setting their manager just recorded"
 )

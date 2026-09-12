@@ -8,9 +8,19 @@ action goes through `AssignmentService` or `ScopedAssignmentQueries`.
 
 There is no real login yet — real auth (CML SSO passthrough vs. a
 dedicated login screen) is an open platform question, see
-`docs/architecture.md`. The sidebar "View as" picker selects an existing
-Party and derives its `Role` from `party_type`. Replacing this with real
-auth only touches `app.py`'s viewer construction — nothing downstream.
+`docs/architecture.md`. `home.py` is the product's landing/sign-in
+screen — the one place a person is chosen (stored in
+`st.session_state["viewer_party_id"]`), not a sidebar dropdown that also
+drives page titles. Once signed in, a persistent header (`app.py`) shows
+"Signed in as {name} ({role})" with a "Switch person" control. Replacing
+`home.py`'s button-per-person picker with real auth only touches how
+`viewer_party_id` gets set — nothing downstream (services, views, RBAC
+enforcement) changes.
+
+Page headings are product/task-oriented ("My Team", "My Journey",
+"Workforce Overview"), not the signed-in person's name or role — the
+person appears as a "Welcome back" line under the heading, not as the
+page's identity.
 
 ## Running locally
 
@@ -49,13 +59,21 @@ Setting → Active → Closed. Both Manager and Agent per-assignment panels
 use this so each assignment reads as a journey rather than a flat pile of
 unordered forms.
 
-**Known dependency gotcha:** `st.graphviz_chart` (used in the Functional
-Owner's Org Structure tab) needs the `graphviz` *Python package*
-installed (it's in `requirements.txt`) even though rendering happens
-client-side — without it the chart silently renders as an empty,
-zero-size element with no error. Also: DOT node identifiers can't contain
-hyphens unless quoted, so UUID-based node ids use `.hex` (no hyphens),
-not `str(uuid)`.
+## Org tree (`org_tree.py`)
+
+The Functional Owner's "Org Structure" tab is a hand-built inline SVG
+component (rendered via `st.iframe`), not `st.graphviz_chart` — graphviz's
+default output read as a technical diagram, not a product visual, and
+this needs zero external/CDN dependency (relevant for CML deployment,
+where outbound network access to a JS CDN is one of the open platform
+questions). It renders the **whole current org** — Functional Owner(s) ->
+Managers -> Agents, three tiers, not just a Manager-Agent pair — using
+rounded cards, soft drop shadows, and smooth cubic-bezier connectors.
+Hovering a card highlights its connections and dims the rest (plain
+inline JS, no library). Shows active assignments only — this is "who
+reports to whom right now," not a history view (that's the "All
+Assignments" tab). An Agent with concurrent, cross-team assignments gets
+more than one incoming edge — it's a graph, not a strict tree, by design.
 
 ## Smoke test
 

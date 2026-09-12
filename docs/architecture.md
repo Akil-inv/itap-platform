@@ -159,13 +159,21 @@ runnable against Postgres with an in-process rule adapter).
    blanket-visibility need.
 4. **Streamlit UI** — done, as `apps/streamlit_ui/`. Thin front door over
    `party_identity` + `assignment` + `rbac_scope`; no business logic of
-   its own. Identity is a dev-mode "view as" picker over existing
-   Parties (role derived from `party_type`) — real auth is still an open
-   platform question and only touches this one seam when answered.
-   Verified end to end with `smoke_test.py` (Streamlit's `AppTest`,
-   headless): seeds demo data, renders all three role views, and
-   exercises the goal-setting form live (manager submits → agent sees it
-   via the RBAC-scoped view).
+   its own. Identity is a dev-mode landing/sign-in page (`home.py`) —
+   not a sidebar dropdown — storing the chosen person in
+   `st.session_state`; real auth is still an open platform question and
+   only touches this one seam when answered. Page headings are
+   product/task-oriented ("My Team", "My Journey", "Workforce Overview"),
+   not the signed-in person's name or role. `theme.py` and `journey.py`
+   render each Assignment's existing state as a visible 3-stage stepper
+   (Goal Setting → Active → Closed) instead of a flat form dump.
+   `org_tree.py` renders the whole current org (Functional Owner(s) →
+   Managers → Agents) as a hand-built inline SVG — rounded cards, smooth
+   bezier connectors, hover-to-trace highlighting — with zero external/
+   CDN dependency. Verified end to end with `smoke_test.py` (Streamlit's
+   `AppTest`, headless) and with real Playwright screenshots (AppTest
+   doesn't render CSS/JS, so a visual claim needs a real browser to back
+   it).
 5. **Notification Dispatch**, **Process Orchestration** (real
    reminder timers, not just the query) — next. The UI currently only
    surfaces the overdue-goal-setting list; there is no delivery

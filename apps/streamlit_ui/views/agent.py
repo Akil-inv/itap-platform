@@ -9,7 +9,8 @@ from party_helpers import safe_get_name
 
 
 def render(services, viewer: Viewer, current_party: Party) -> None:
-    st.title(f"Agent: {current_party.display_name}")
+    st.title("My Journey")
+    st.caption(f"Welcome back, {current_party.display_name}.")
 
     assignments = services.scope.list_visible_assignments(viewer)
     if not assignments:
