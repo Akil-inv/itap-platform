@@ -1069,6 +1069,25 @@ repeated visual pattern — another list row, another status pill —
 should become a component in its own module (following `person_row.py`
 as the template) rather than being re-typed per view.
 
+**Unifying "journey" visuals under one road (2026-09-12, same day).**
+The Admin Portfolio's Rotation Timeline (`views/associate_portfolio.py`)
+was a straight vertical stepper, and the Associate's score-milestones
+section (`views/agent.py`) had just been given its own separate curve
+style — neither matched `journey_curve.py`, the winding ascending road
+already used for the Rotation Plan preview and ported from the
+originally approved front-page mockup. Per explicit user direction
+("won't compromise"), both were switched to reuse that exact component
+rather than approximate its look: the Portfolio's timeline overlays it
+above the existing detailed stage cards (which still carry manager,
+dates, and the responsibilities badge), and score milestones plot each
+closed episode's score as a road node, replacing the short-lived
+`score_curve.py` (deleted). This also surfaced and fixed a real bug in
+`journey_curve.py`'s `point_at()`: when the current/traveled stage is
+exactly the *last* node — the normal case for a Portfolio timeline,
+unlike a Rotation Plan's usual "partway through a stage" progress — the
+segment-index clamp landed the "you are here" marker one node early,
+colliding its label with the true last node's own label.
+
 **Upsert semantics — a real behavior change, not additive.** Every
 `bulk_import.py` row previously matched-and-reused-unchanged for people
 and skipped a duplicate Assignment outright; it now matches by natural
