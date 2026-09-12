@@ -9,13 +9,20 @@ action goes through `AssignmentService` or `ScopedAssignmentQueries`.
 There is no real login yet — real auth (CML SSO passthrough vs. a
 dedicated login screen) is an open platform question, see
 `docs/architecture.md`. `home.py` is the product's landing/sign-in
-screen — the one place a person is chosen (stored in
+screen, styled as a pitch panel ("one address, three experiences") next
+to the actual sign-in card — the one place a person is chosen (stored in
 `st.session_state["viewer_party_id"]`), not a sidebar dropdown that also
 drives page titles. Once signed in, a persistent header (`app.py`) shows
 "Signed in as {name} ({role})" with a "Switch person" control. Replacing
 `home.py`'s button-per-person picker with real auth only touches how
 `viewer_party_id` gets set — nothing downstream (services, views, RBAC
 enforcement) changes.
+
+`role_labels.py` holds the product-facing name for each role — "ITAP
+Admin" / "Line Manager" / "Intern / Staff" — shared between `home.py`'s
+sign-in card and `app.py`'s header chip so both call a role by the same
+name. Display-only: the underlying `Role` enum values
+(`functional_owner`/`manager`/`agent`) are unchanged everywhere else.
 
 Page headings are product/task-oriented ("My Team", "My Journey",
 "Workforce Overview"), not the signed-in person's name or role — the

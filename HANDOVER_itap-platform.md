@@ -208,6 +208,24 @@ Last updated: 2026-09-11
   SQLite file; all test suites (85 total across the three capabilities)
   plus `smoke_test.py`/`test_bulk_import.py` still pass.
 
+- Restyled front page (2026-09-12, same day): after a mockup review round
+  (a standalone HTML/JS artifact, not committed to this repo, used to try
+  a two-step "pick your portal" flow, a single-page pitch-panel-plus-
+  sign-in-card layout, an intern "learning curve" journey map, and a
+  Rotation Plan concept), the approved front page — one page, a pitch
+  panel ("one address, three experiences") next to the real sign-in
+  card, grouped by role — replaced the flat person-directory in
+  `home.py`. New `role_labels.py` gives each role a product-facing name
+  ("ITAP Admin" / "Line Manager" / "Intern / Staff") shared by `home.py`
+  and `app.py`'s header chip, so the signed-in person's role reads the
+  same everywhere; the underlying `Role` enum values are unchanged. The
+  rotation-plan/journey-curve ideas from the mockup are not implemented
+  yet — they need real domain modeling (a plan template, per-intern
+  enrollment/progress) this pass didn't touch; only the front page shipped.
+  Verified with `smoke_test.py` (unchanged pass, since button labels
+  didn't change) and Playwright screenshots of the sign-in page and the
+  post-sign-in header.
+
 ### In Progress
 
 - Nothing mid-flight; the party_identity + assignment + rbac_scope +

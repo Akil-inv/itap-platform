@@ -27,6 +27,7 @@ from rbac_scope import Role, Viewer
 import home
 import theme
 from services import get_services
+from role_labels import ROLE_DISPLAY_NAME
 from views import agent as agent_view
 from views import functional_owner as owner_view
 from views import manager as manager_view
@@ -110,7 +111,7 @@ with header_left:
     st.markdown(
         f'<div style="font-size:0.85rem; color:#6B7280;">'
         f"ITAP &nbsp;·&nbsp; Signed in as <strong>{current_party.display_name}</strong> "
-        f"({viewer.role.value.replace('_', ' ')})</div>",
+        f"({ROLE_DISPLAY_NAME[viewer.role]})</div>",
         unsafe_allow_html=True,
     )
 with header_right:
