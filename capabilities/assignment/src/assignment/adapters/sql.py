@@ -140,6 +140,11 @@ class SqlAssignmentRepo:
                 )
             )
 
+    def list_all(self) -> list[Assignment]:
+        with self._engine.connect() as conn:
+            rows = conn.execute(select(assignments_table)).mappings().all()
+        return [_row_to_assignment(r) for r in rows]
+
     def list_by_agent(self, agent_id: UUID) -> list[Assignment]:
         with self._engine.connect() as conn:
             rows = conn.execute(

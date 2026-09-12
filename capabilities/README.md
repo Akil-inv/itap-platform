@@ -25,7 +25,7 @@ Each subdirectory here is one domain-agnostic capability block from
 | 2/3 | `assignment/` | Built directly for ITAP (assignment lifecycle + rule-guarded transitions + goal setting + closure scoring + reverse feedback), 23 tests passing across in-memory + SQL adapters. Not yet generalized — see note below. |
 | 4 | process orchestration | Deferred — no timer/reminder dispatch yet; `list_overdue_goal_setting` exists as the query a future job would poll |
 | 5 | scoring & closure | Folded into `assignment/` for now (ClosureRecord, ReverseFeedback) |
-| 6 | RBAC scope | Not started |
+| 6 | `rbac_scope/` | Built — `ScopedAssignmentQueries`: 3-way visibility (Functional Owner / Manager / Agent) computed from relationship to the record, not per-role queries. 11 tests passing. Depends on `assignment` at runtime (see its README for install). |
 | 7 | notification dispatch | Not started |
 | 8 | outbox sync | Not started |
 

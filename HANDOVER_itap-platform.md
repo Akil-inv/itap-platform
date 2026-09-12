@@ -104,18 +104,26 @@ Last updated: 2026-09-11
   state machine (rule-guarded transitions), GoalSetting, ClosureRecord,
   ReverseFeedback, application service. Covers manager-only extension,
   cross-team bifurcation, 30-day min-elapsed closure gate, swap-to-new-
-  manager, and an overdue-goal-setting query. 23 tests passing across
+  manager, and an overdue-goal-setting query. 25 tests passing across
   in-memory + SQL (SQLAlchemy Core) adapters.
+- `capabilities/rbac_scope/`: 3-way visibility (Functional Owner /
+  Manager / Agent) over Assignment data, computed from relationship
+  (manager_id/agent_id match) rather than per-role queries. Child records
+  (goal setting, closure, reverse feedback) inherit their Assignment's
+  visibility. Includes `consolidated_score` for the Functional Owner's
+  per-agent rollup. 11 tests passing.
 
 ### In Progress
 
-- RBAC Scope (3-way visibility: Functional Owner / Manager / Agent) —
-  next build slice, layered over `party_identity` + `assignment`.
+- A Streamlit UI thin enough to exercise all three roles end-to-end —
+  next build slice, on top of `party_identity` + `assignment` +
+  `rbac_scope`.
 
 ### Next
 
-- RBAC Scope, then a Streamlit UI thin enough to actually exercise the
-  three roles end-to-end.
+- Streamlit UI (needs a real Postgres connection — CML platform questions
+  below still open, but local/dev can run against a local Postgres or
+  the existing SQLite-portable adapters in the meantime).
 - Real notification/reminder dispatch (today only a queryable
   "overdue goal setting" list exists, no delivery mechanism).
 - Outbox/Event Sync to Iceberg — deferred until the CML platform

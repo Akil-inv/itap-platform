@@ -64,6 +64,15 @@ def test_close_with_record_persists_both_atomically(assignment_repo):
     assert assignment_repo.get_closure_record(assignment.id).objective_score == 4.0
 
 
+def test_list_all_returns_every_assignment(assignment_repo):
+    first = _make_assignment()
+    second = _make_assignment()
+    assignment_repo.add(first)
+    assignment_repo.add(second)
+
+    assert {a.id for a in assignment_repo.list_all()} == {first.id, second.id}
+
+
 def test_list_by_agent_and_manager(assignment_repo):
     agent_id, manager_id = uuid4(), uuid4()
     mine = _make_assignment(agent_id=agent_id, manager_id=manager_id)

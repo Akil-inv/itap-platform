@@ -43,6 +43,9 @@ class InMemoryAssignmentRepo:
         self._assignments[assignment.id] = assignment
         self._closure_records[closure.assignment_id] = closure
 
+    def list_all(self) -> list[Assignment]:
+        return list(self._assignments.values())
+
     def list_by_agent(self, agent_id: UUID) -> list[Assignment]:
         return [a for a in self._assignments.values() if a.agent_id == agent_id]
 

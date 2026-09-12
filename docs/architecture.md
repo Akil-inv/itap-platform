@@ -146,8 +146,17 @@ runnable against Postgres with an in-process rule adapter).
    goal-setting query for a future reminder job. 23 tests passing across
    in-memory + SQL adapters. Built directly with ITAP's vocabulary — see
    "Decision" note above.
-3. **RBAC Scope** — next. Layer 3-way visibility (Functional Owner / own
-   Manager / own Agent) over Party + Assignment.
+3. **RBAC Scope** — done, as `capabilities/rbac_scope/`.
+   `ScopedAssignmentQueries` computes visibility from the Viewer's
+   relationship to each Assignment (manager_id/agent_id match), not from
+   separate per-role queries. Child records (GoalSetting, ClosureRecord,
+   ReverseFeedback) inherit their parent Assignment's visibility.
+   Functional Owner also gets `consolidated_score(agent_id)` — an average
+   objective_score across an Agent's closed assignments; Agents may query
+   only their own, Managers not at all (per spec: their scope stays
+   limited to what pertains to their own assignments). 11 tests passing.
+   Required adding `AssignmentRepo.list_all()` for the Functional Owner's
+   blanket-visibility need.
 4. **Notification Dispatch**, **Process Orchestration** (real
    reminder timers, not just the query) — after RBAC, once there's a UI
    to trigger from.

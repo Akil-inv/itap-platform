@@ -1,0 +1,16 @@
+[project]
+name = "rbac-scope"
+version = "0.1.0"
+description = "Block 6: 3-way visibility (Functional Owner / Manager / Agent) over Assignment data."
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+test = ["pytest>=7.0"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
