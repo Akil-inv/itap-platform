@@ -42,7 +42,9 @@ rotation_plans_table = Table(
     Column("name", String(200), nullable=False),
     Column("stage_names", JSON, nullable=False),
     Column("weeks_per_stage", Integer, nullable=False),
+    Column("default_stage_managers", JSON, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("version", Integer, nullable=False),
 )
 
 rotation_enrollments_table = Table(
@@ -83,6 +85,11 @@ def _ensure_columns(engine: Engine, table: Table, backfill: Optional[dict] = Non
 
 def create_schema(engine: Engine) -> None:
     metadata.create_all(engine, tables=[rotation_plans_table, rotation_enrollments_table])
+    _ensure_columns(
+        engine,
+        rotation_plans_table,
+        backfill={"default_stage_managers": {}, "version": 0},
+    )
     _ensure_columns(engine, rotation_enrollments_table, backfill={"stage_assignments": {}})
 
 
@@ -92,15 +99,7 @@ class SqlRotationPlanRepo:
 
     def add_plan(self, plan: RotationPlan) -> None:
         with self._engine.begin() as conn:
-            conn.execute(
-                insert(rotation_plans_table).values(
-                    id=str(plan.id),
-                    name=plan.name,
-                    stage_names=plan.stage_names,
-                    weeks_per_stage=plan.weeks_per_stage,
-                    created_at=plan.created_at,
-                )
-            )
+            conn.execute(insert(rotation_plans_table).values(**_plan_values(plan)))
 
     def get_plan(self, plan_id: UUID) -> RotationPlan:
         with self._engine.connect() as conn:
@@ -115,6 +114,24 @@ class SqlRotationPlanRepo:
         with self._engine.connect() as conn:
             rows = conn.execute(select(rotation_plans_table)).mappings().all()
         return [_row_to_plan(r) for r in rows]
+
+    def update_plan(self, plan: RotationPlan) -> None:
+        with self._engine.begin() as conn:
+            result = conn.execute(
+                update(rotation_plans_table)
+                .where(rotation_plans_table.c.id == str(plan.id))
+                .where(rotation_plans_table.c.version == plan.version)
+                .values(**_plan_values(plan, include_id=False, bump_version=True))
+            )
+            if result.rowcount == 0:
+                exists = conn.execute(
+                    select(rotation_plans_table.c.id).where(
+                        rotation_plans_table.c.id == str(plan.id)
+                    )
+                ).first()
+                if exists is None:
+                    raise RotationPlanNotFound(plan.id)
+                raise ConcurrentModification(plan.id)
 
     def add_enrollment(self, enrollment: Enrollment) -> None:
         with self._engine.begin() as conn:
@@ -205,13 +222,36 @@ def _enrollment_values(
     return values
 
 
+def _plan_values(plan: RotationPlan, include_id: bool = True, bump_version: bool = False) -> dict:
+    values = {
+        "name": plan.name,
+        "stage_names": plan.stage_names,
+        "weeks_per_stage": plan.weeks_per_stage,
+        # Same str-keyed/str-valued JSON encoding as Enrollment.stage_assignments.
+        "default_stage_managers": {
+            str(stage_index): str(manager_id)
+            for stage_index, manager_id in plan.default_stage_managers.items()
+        },
+        "created_at": plan.created_at,
+        "version": plan.version + 1 if bump_version else plan.version,
+    }
+    if include_id:
+        values["id"] = str(plan.id)
+    return values
+
+
 def _row_to_plan(row) -> RotationPlan:
     return RotationPlan(
         id=UUID(row["id"]),
         name=row["name"],
         stage_names=list(row["stage_names"]),
         weeks_per_stage=row["weeks_per_stage"],
+        default_stage_managers={
+            int(stage_index): UUID(manager_id)
+            for stage_index, manager_id in (row["default_stage_managers"] or {}).items()
+        },
         created_at=row["created_at"],
+        version=row["version"],
     )
 
 

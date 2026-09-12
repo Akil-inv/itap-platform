@@ -159,3 +159,50 @@ def test_update_enrollment_persists_stage_assignments(rotation_plan_repo):
     assert rotation_plan_repo.get_enrollment(enrollment.id).stage_assignments == {
         0: assignment_id
     }
+
+
+def test_default_stage_managers_round_trips(rotation_plan_repo):
+    manager_id = uuid4()
+    plan = _make_plan(default_stage_managers={0: manager_id})
+    rotation_plan_repo.add_plan(plan)
+
+    fetched = rotation_plan_repo.get_plan(plan.id)
+    assert fetched.default_stage_managers == {0: manager_id}
+
+
+def test_default_stage_managers_default_to_empty(rotation_plan_repo):
+    plan = _make_plan()
+    rotation_plan_repo.add_plan(plan)
+    assert rotation_plan_repo.get_plan(plan.id).default_stage_managers == {}
+
+
+def test_update_plan_persists_default_stage_managers(rotation_plan_repo):
+    plan = _make_plan()
+    rotation_plan_repo.add_plan(plan)
+
+    manager_id = uuid4()
+    plan.default_stage_managers = {1: manager_id}
+    rotation_plan_repo.update_plan(plan)
+
+    assert rotation_plan_repo.get_plan(plan.id).default_stage_managers == {1: manager_id}
+
+
+def test_update_plan_rejects_stale_version(rotation_plan_repo):
+    plan = _make_plan()
+    rotation_plan_repo.add_plan(plan)
+
+    copy_a = rotation_plan_repo.get_plan(plan.id)
+    copy_b = rotation_plan_repo.get_plan(plan.id)
+
+    copy_a.default_stage_managers = {0: uuid4()}
+    rotation_plan_repo.update_plan(copy_a)
+
+    copy_b.default_stage_managers = {1: uuid4()}
+    with pytest.raises(ConcurrentModification):
+        rotation_plan_repo.update_plan(copy_b)
+
+
+def test_update_missing_plan_raises(rotation_plan_repo):
+    plan = _make_plan()
+    with pytest.raises(RotationPlanNotFound):
+        rotation_plan_repo.update_plan(plan)

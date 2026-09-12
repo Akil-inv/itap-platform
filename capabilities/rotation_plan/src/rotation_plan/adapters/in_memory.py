@@ -13,6 +13,14 @@ from ..domain import (
 )
 
 
+def _copy_plan(p: RotationPlan) -> RotationPlan:
+    return replace(
+        p,
+        stage_names=list(p.stage_names),
+        default_stage_managers=dict(p.default_stage_managers),
+    )
+
+
 def _copy_enrollment(e: Enrollment) -> Enrollment:
     return replace(e, stage_assignments=dict(e.stage_assignments))
 
@@ -25,17 +33,25 @@ class InMemoryRotationPlanRepo:
     def add_plan(self, plan: RotationPlan) -> None:
         if plan.id in self._plans:
             raise ValueError(f"RotationPlan {plan.id} already exists")
-        self._plans[plan.id] = replace(plan, stage_names=list(plan.stage_names))
+        self._plans[plan.id] = _copy_plan(plan)
 
     def get_plan(self, plan_id: UUID) -> RotationPlan:
         try:
             plan = self._plans[plan_id]
         except KeyError:
             raise RotationPlanNotFound(plan_id) from None
-        return replace(plan, stage_names=list(plan.stage_names))
+        return _copy_plan(plan)
 
     def list_plans(self) -> list[RotationPlan]:
-        return [replace(p, stage_names=list(p.stage_names)) for p in self._plans.values()]
+        return [_copy_plan(p) for p in self._plans.values()]
+
+    def update_plan(self, plan: RotationPlan) -> None:
+        current = self._plans.get(plan.id)
+        if current is None:
+            raise RotationPlanNotFound(plan.id)
+        if current.version != plan.version:
+            raise ConcurrentModification(plan.id)
+        self._plans[plan.id] = _copy_plan(replace(plan, version=plan.version + 1))
 
     def add_enrollment(self, enrollment: Enrollment) -> None:
         if enrollment.id in self._enrollments:

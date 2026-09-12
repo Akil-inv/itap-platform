@@ -194,3 +194,47 @@ def test_link_assignment_rejects_out_of_range_stage(service):
 
     with pytest.raises(StageIndexOutOfRange):
         service.link_assignment(enrollment.id, 5, uuid4())
+
+
+def test_create_plan_with_default_stage_managers(service):
+    manager_id = uuid4()
+    plan = service.create_plan(
+        "Engineering Foundations Track", ["Platform", "Data"],
+        default_stage_managers={0: manager_id},
+    )
+    assert plan.default_stage_managers == {0: manager_id}
+
+
+def test_set_default_manager(service):
+    plan = service.create_plan("Engineering Foundations Track", ["Platform", "Data", "Product"])
+    manager_id = uuid4()
+
+    updated = service.set_default_manager(plan.id, 1, manager_id)
+
+    assert updated.default_stage_managers == {1: manager_id}
+
+
+def test_set_default_manager_can_be_changed(service):
+    plan = service.create_plan("Engineering Foundations Track", ["Platform", "Data"])
+    first_manager, second_manager = uuid4(), uuid4()
+
+    service.set_default_manager(plan.id, 0, first_manager)
+    updated = service.set_default_manager(plan.id, 0, second_manager)
+
+    assert updated.default_stage_managers == {0: second_manager}
+
+
+def test_set_default_manager_none_clears_it(service):
+    plan = service.create_plan("Engineering Foundations Track", ["Platform", "Data"])
+    service.set_default_manager(plan.id, 0, uuid4())
+
+    updated = service.set_default_manager(plan.id, 0, None)
+
+    assert updated.default_stage_managers == {}
+
+
+def test_set_default_manager_rejects_out_of_range_stage(service):
+    plan = service.create_plan("Engineering Foundations Track", ["Platform", "Data"])
+
+    with pytest.raises(StageIndexOutOfRange):
+        service.set_default_manager(plan.id, 9, uuid4())

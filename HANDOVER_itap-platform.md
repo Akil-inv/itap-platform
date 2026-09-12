@@ -280,6 +280,27 @@ Last updated: 2026-09-11
   withdrew it as her Manager, confirmed her own journey curve had
   already moved to the next stage. See "Auto-advancing on Assignment
   closure" in `docs/architecture.md`.
+- Auto-creating the next Assignment (2026-09-12, same day): closed the
+  remaining manual step. `RotationPlan.default_stage_managers` (stage
+  index -> Manager id, same by-id-only shape as
+  `Enrollment.stage_assignments`) lets an admin name which Manager
+  should cover a given stage; new "Default manager per stage" expander
+  per plan in Rotation Plans, new `RotationPlanService.
+  set_default_manager()` (and `create_plan(default_stage_managers=...)`).
+  Both `RotationPlan` and its table gained a `version` column for
+  optimistic concurrency, matching `Enrollment`. When
+  `rotation_plan_bridge` advances a stage that has a default Manager, it
+  now creates a real Assignment under that Manager and links it in the
+  same action — falling back to an unlinked advance on
+  `DuplicateAssignment`/`ValueError` (e.g. the Agent already has an
+  active Assignment with that Manager) rather than failing outright.
+  `rotation_plan` now at 91 tests; `test_rotation_plan_bridge.py` covers
+  both the auto-create and the no-default-Manager fallback. Verified end
+  to end with Playwright: set Priti as Data Team's default Manager,
+  withdrew Casey's Platform-Team Assignment, and confirmed her Rotation
+  Plans row read "Covered by Priti" with a brand-new Assignment, with no
+  admin action beyond the one-time default-Manager setup. See
+  "Auto-creating the next Assignment" in `docs/architecture.md`.
 
 ### In Progress
 

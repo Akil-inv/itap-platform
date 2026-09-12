@@ -70,5 +70,47 @@ services.assignment_service.withdraw_assignment(unrelated_assignment.id)
 rotation_plan_bridge.advance_linked_stage_if_closed(services, unrelated_assignment.id)  # must not raise
 print("Closing an unlinked Assignment is a no-op: OK")
 
+# --- a stage with a default Manager gets a new Assignment auto-created and linked ---
+
+agent2 = Party(party_type="agent", display_name="Marcus")
+manager_a = Party(party_type="manager", display_name="Priti")
+manager_b = Party(party_type="manager", display_name="Devika")
+services.party_repo.add(agent2)
+services.party_repo.add(manager_a)
+services.party_repo.add(manager_b)
+
+first_assignment = services.assignment_service.create_assignment(
+    agent_id=agent2.id, manager_id=manager_a.id, start_date=date(2026, 1, 1)
+)
+plan2 = services.rotation_plan_service.create_plan(
+    "Design Foundations Track",
+    ["Product Design", "Research"],
+    default_stage_managers={1: manager_b.id},
+)
+enrollment2 = services.rotation_plan_service.enroll(
+    plan2.id, agent2.id, assignment_id=first_assignment.id
+)
+
+services.assignment_service.withdraw_assignment(first_assignment.id)
+rotation_plan_bridge.advance_linked_stage_if_closed(services, first_assignment.id)
+
+advanced2 = services.rotation_plan_repo.get_enrollment(enrollment2.id)
+assert advanced2.current_stage_index == 1, advanced2
+new_assignment_id = advanced2.current_assignment_id
+assert new_assignment_id is not None, "Expected an auto-created Assignment linked to stage 2"
+new_assignment = services.assignment_repo.get(new_assignment_id)
+assert new_assignment.manager_id == manager_b.id
+assert new_assignment.agent_id == agent2.id
+assert new_assignment.state.value == "active"
+print("A stage with a default Manager gets a new Assignment auto-created and linked: OK")
+
+# --- a stage with no default Manager just advances, unlinked (existing behavior) ---
+
+services.assignment_service.withdraw_assignment(new_assignment_id)
+rotation_plan_bridge.advance_linked_stage_if_closed(services, new_assignment_id)
+final2 = services.rotation_plan_repo.get_enrollment(enrollment2.id)
+assert final2.current_stage_index == 1, "Already at the last stage of plan2"
+print("A stage with no next stage still doesn't auto-create anything: OK")
+
 os.remove("test_rotation_plan_bridge.db")
 print("ALL ROTATION PLAN BRIDGE TESTS PASSED")

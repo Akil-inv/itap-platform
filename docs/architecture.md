@@ -224,13 +224,13 @@ runnable against Postgres with an in-process rule adapter).
 - `ITAP_DEV_MODE=false` hides the identity-switching UI but is a safety
   valve, not a security boundary — the underlying service calls have no
   auth of their own yet. Real auth remains the actual fix.
-- Linking a stage to its Assignment (see "Linking a stage to its
-  Assignment" below) is still a manual admin action — closing an
-  Assignment now auto-advances the *linked* stage (see "Auto-advancing
-  on Assignment closure"), but nothing creates the link in the first
-  place, and nothing creates or closes an Assignment on the plan's
-  behalf either. An admin still has to connect a freshly-created
-  Assignment to the right stage by hand.
+- Linking a stage to its Assignment is still a manual admin action for
+  the *first* Assignment in a plan (nothing creates that one for you at
+  enrollment time) — but once a stage has a default Manager configured
+  (see "Auto-creating the next Assignment" below), every stage after
+  that links and creates itself automatically as the plan progresses.
+  Stages with no default Manager still work exactly as before: manual
+  "Advance" and manual "Link."
 
 ### Rotation Plan (2026-09-12, same day)
 
@@ -356,6 +356,47 @@ end to end with Playwright too: linked Casey's Platform-Team stage to her
 Alex assignment, withdrew that assignment as Alex, and confirmed Casey's
 own journey curve had already moved to Data Team with no admin action in
 between.
+
+### Auto-creating the next Assignment (2026-09-12, same day)
+
+Closed the remaining manual step: `RotationPlan.default_stage_managers`
+(a stage index -> Manager id map, same by-id-only shape as
+`Enrollment.stage_assignments` — `rotation_plan` still imports neither
+`assignment` nor `party_identity`) lets an admin configure, per plan,
+which Manager should pick up a given stage. `RotationPlanService` grew
+`set_default_manager(plan_id, stage_index, manager_id)` (pass `None` to
+clear one) and `create_plan(..., default_stage_managers=...)`; both
+`RotationPlan` and the `rotation_plans` table gained a `version` column
+for the same optimistic-concurrency contract `Enrollment` already had —
+`update_plan` is the new corresponding port method. 91 tests passing (up
+from 71).
+
+`rotation_plan_bridge.advance_linked_stage_if_closed` now checks the new
+stage's `default_stage_managers` entry before just moving the index: if
+one exists, it creates a real Assignment (`assignment_service.
+create_assignment`, using `assignment.clock.today()` per the existing
+UTC-clock convention) under that Manager and links it in the same call
+to `advance_stage`. A `DuplicateAssignment` (the Agent already has an
+active Assignment with that Manager — plausible under bifurcation) or
+any other `ValueError` falls back to advancing unlinked, same as a stage
+with no default Manager at all — this is a convenience, and a
+partially-successful automatic action beats a broken one every time.
+
+UI: each plan in the Functional Owner's "Rotation Plans" tab has a new
+"Default manager per stage" expander — one selectbox per stage
+(including "— none —"), saved together. The per-enrollment expander's
+existing "Link an active Assignment to this stage" control is unchanged
+and still the way to fix up a stage with no default Manager, or to
+override an auto-created link.
+
+`test_rotation_plan_bridge.py` gained two cases: a stage with a default
+Manager gets a new Assignment auto-created and linked, and a stage with
+no default Manager still just advances (unchanged, no regression).
+Verified end to end with Playwright: configured Priti as Data Team's
+default Manager, withdrew Casey's Platform-Team assignment, and
+confirmed — without touching anything else — her Rotation Plans row read
+"Covered by Priti" with a brand-new active Assignment, and her own
+journey curve showed the same.
 
 ### Bulk Setup + a real Streamlit ordering bug (2026-09-12, same day)
 

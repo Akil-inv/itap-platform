@@ -23,13 +23,40 @@ class RotationPlanService:
         self._repo = repo
 
     def create_plan(
-        self, name: str, stage_names: list[str], weeks_per_stage: int = 8
+        self,
+        name: str,
+        stage_names: list[str],
+        weeks_per_stage: int = 8,
+        default_stage_managers: Optional[dict[int, UUID]] = None,
     ) -> RotationPlan:
         plan = RotationPlan(
-            name=name, stage_names=list(stage_names), weeks_per_stage=weeks_per_stage
+            name=name,
+            stage_names=list(stage_names),
+            weeks_per_stage=weeks_per_stage,
+            default_stage_managers=dict(default_stage_managers or {}),
         )
         self._repo.add_plan(plan)
         return plan
+
+    def set_default_manager(
+        self, plan_id: UUID, stage_index: int, manager_id: Optional[UUID]
+    ) -> RotationPlan:
+        """Set (or, with `manager_id=None`, clear) which Manager should
+        get a new Assignment automatically when an Enrollment reaches
+        `stage_index` (see `advance_stage`/the app layer's auto-advance
+        bridge). Can be changed any time — it only affects future stage
+        arrivals, not Enrollments already sitting on that stage."""
+        plan = self._repo.get_plan(plan_id)
+        if not (0 <= stage_index < plan.stage_count):
+            raise StageIndexOutOfRange(stage_index)
+        default_stage_managers = dict(plan.default_stage_managers)
+        if manager_id is None:
+            default_stage_managers.pop(stage_index, None)
+        else:
+            default_stage_managers[stage_index] = manager_id
+        updated = replace(plan, default_stage_managers=default_stage_managers)
+        self._repo.update_plan(updated)
+        return self._repo.get_plan(plan_id)
 
     def enroll(
         self,

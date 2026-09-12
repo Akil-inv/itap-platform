@@ -184,16 +184,24 @@ same zero-external-dependency convention as `org_tree.py`. It's a direct
 Python port of the curve from the approved front-page mockup.
 
 A stage is a label/track, not a specific Manager — the Manager for a
-given stage still comes from a normal Assignment created separately.
-`Enrollment.stage_assignments` records which Assignment covers which
-stage (by id only), filled in by an admin from each enrollment row's
-"Link an active Assignment to this stage" control. Once linked, the
-Agent's own journey curve shows the covering Manager's name under each
-reached stage — and closing that Assignment (a normal close, a
-withdrawal, or a manager handoff) auto-advances the stage to the next
-one (`rotation_plan_bridge.py`), so the common path needs the "Advance"
-button only when a stage was never linked to an Assignment in the first
-place.
+given stage still comes from a normal Assignment. `Enrollment.
+stage_assignments` records which Assignment covers which stage (by id
+only), filled in by an admin from each enrollment row's "Link an active
+Assignment to this stage" control. Once linked, the Agent's own journey
+curve shows the covering Manager's name under each reached stage — and
+closing that Assignment (a normal close, a withdrawal, or a manager
+handoff) auto-advances the stage to the next one
+(`rotation_plan_bridge.py`).
+
+A plan can also name a default Manager per stage
+(`RotationPlan.default_stage_managers`, set from each plan's "Default
+manager per stage" expander in Rotation Plans) — when set, advancing
+into that stage auto-creates a fresh Assignment under that Manager and
+links it in the same action, so the common path (a plan whose stages
+each have a known Manager) needs no admin click at all past the initial
+setup. A stage with no default Manager still works exactly as before:
+"Advance" moves the stage, and "Link an active Assignment" connects it
+to whatever gets created by hand.
 
 ## Smoke test
 

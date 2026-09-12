@@ -326,11 +326,54 @@ def _rotation_plans(services) -> None:
                     except AlreadyEnrolled:
                         st.error("This Intern is already enrolled in this plan.")
 
+    managers = services.party_repo.list_by_type("manager")
+    manager_labels = disambiguate_labels(managers)
+    manager_label_by_id = {p.id: label for label, p in manager_labels.items()}
+    NO_DEFAULT = "— none —"
+
     for plan in plans:
         enrollments = services.rotation_plan_repo.list_enrollments_for_plan(plan.id)
         with st.container(border=True):
             st.markdown(f"**{plan.name}** — {len(enrollments)} enrolled")
             st.caption(" → ".join(plan.stage_names) + f" · {plan.weeks_per_stage} weeks/stage")
+
+            with st.expander("Default manager per stage (auto-creates the next Assignment)"):
+                st.caption(
+                    "When an Intern's stage advances — because the linked "
+                    "Assignment closed — a stage with a default Manager "
+                    "here gets a fresh Assignment created and linked "
+                    "automatically. Leave a stage as \"none\" to keep "
+                    "linking it by hand."
+                )
+                if not manager_labels:
+                    st.info("Onboard at least one Manager first.")
+                else:
+                    with st.form(f"default_managers_{plan.id}"):
+                        choices = {}
+                        for i, stage_name in enumerate(plan.stage_names):
+                            current = plan.default_stage_managers.get(i)
+                            options = [NO_DEFAULT] + list(manager_labels.keys())
+                            default_index = (
+                                options.index(manager_label_by_id[current])
+                                if current in manager_label_by_id
+                                else 0
+                            )
+                            choices[i] = st.selectbox(
+                                f"Stage {i + 1} — {stage_name}",
+                                options,
+                                index=default_index,
+                                key=f"default_manager_{plan.id}_{i}",
+                            )
+                        if st.form_submit_button("Save default managers"):
+                            for stage_index, choice in choices.items():
+                                manager_id = (
+                                    None if choice == NO_DEFAULT else manager_labels[choice].id
+                                )
+                                services.rotation_plan_service.set_default_manager(
+                                    plan.id, stage_index, manager_id
+                                )
+                            st.success("Saved.")
+                            st.rerun()
 
             if enrollments:
                 markers = []
