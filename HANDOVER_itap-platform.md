@@ -123,11 +123,22 @@ Last updated: 2026-09-11
   (`DATABASE_URL`), Postgres-ready. Verified with `smoke_test.py`
   (Streamlit `AppTest`, headless) — renders all three roles and exercises
   the goal-setting form live end to end.
+- UI polish pass (2026-09-12): `theme.py` (custom CSS, hides Streamlit's
+  default chrome) and `journey.py` (a 3-stage stepper — Goal Setting →
+  Active → Closed — reading the existing Assignment state, no new states
+  added) replace the flat, unordered form dump in Manager/Agent views
+  with a visible per-assignment journey. Verified with real Playwright
+  screenshots (not just AppTest, which doesn't render CSS) — caught and
+  fixed two real bugs in the process: `st.graphviz_chart` needs the
+  `graphviz` Python package installed or it silently renders empty, and
+  DOT node ids built from UUIDs must use `.hex` (hyphens break unquoted
+  DOT identifiers).
 
 ### In Progress
 
 - Nothing mid-flight; the party_identity + assignment + rbac_scope +
-  Streamlit UI slice is complete and demoable.
+  Streamlit UI slice (including the journey/theme pass) is complete and
+  demoable.
 
 ### Next
 

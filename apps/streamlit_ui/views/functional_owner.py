@@ -50,7 +50,8 @@ def _all_assignments(services, viewer: Viewer) -> None:
         }
         for a in assignments
     ]
-    st.dataframe(rows, width='stretch')
+    with st.container(border=True):
+        st.dataframe(rows, width='stretch')
 
 
 def _dot_escape(text: str) -> str:
@@ -71,8 +72,11 @@ def _org_structure(services, viewer: Viewer) -> None:
     manager_counts: dict[str, int] = {}
 
     for a in assignments:
-        manager_node = f"m_{a.manager_id}"
-        agent_node = f"a_{a.agent_id}"
+        # DOT identifiers can't contain hyphens unless quoted; UUIDs are
+        # hyphenated, so use .hex (no hyphens) for the node id itself —
+        # the human-readable name still goes in the label.
+        manager_node = f"m_{a.manager_id.hex}"
+        agent_node = f"a_{a.agent_id.hex}"
 
         if manager_node not in seen_nodes:
             name = _dot_escape(safe_get_name(services.party_repo, a.manager_id))
@@ -102,7 +106,7 @@ def _org_structure(services, viewer: Viewer) -> None:
     st.caption("Solid edge = active assignment. Dashed edge = closed.")
 
     bifurcated_agent_ids = {
-        a.agent_id for a in assignments if manager_counts.get(f"a_{a.agent_id}", 0) > 1
+        a.agent_id for a in assignments if manager_counts.get(f"a_{a.agent_id.hex}", 0) > 1
     }
     if bifurcated_agent_ids:
         names = [safe_get_name(services.party_repo, agent_id) for agent_id in bifurcated_agent_ids]
@@ -110,29 +114,30 @@ def _org_structure(services, viewer: Viewer) -> None:
 
 
 def _onboard_and_assign(services) -> None:
-    col1, col2 = st.columns(2)
+    st.caption("A two-step journey: bring people into the system, then connect them.")
 
-    with col1:
-        st.subheader("Onboard a new Agent")
-        with st.form("new_agent"):
-            name = st.text_input("Agent name")
-            submitted = st.form_submit_button("Create Agent")
-            if submitted and name:
-                services.party_repo.add(Party(party_type="agent", display_name=name))
-                st.success(f"Agent '{name}' created.")
-                st.rerun()
+    with st.container(border=True):
+        st.markdown("**① Onboard people**")
+        col1, col2 = st.columns(2)
+        with col1:
+            with st.form("new_agent"):
+                name = st.text_input("New Agent name")
+                submitted = st.form_submit_button("Create Agent")
+                if submitted and name:
+                    services.party_repo.add(Party(party_type="agent", display_name=name))
+                    st.success(f"Agent '{name}' created.")
+                    st.rerun()
+        with col2:
+            with st.form("new_manager"):
+                name = st.text_input("New Manager name", key="manager_name")
+                submitted = st.form_submit_button("Create Manager")
+                if submitted and name:
+                    services.party_repo.add(Party(party_type="manager", display_name=name))
+                    st.success(f"Manager '{name}' created.")
+                    st.rerun()
 
-        st.subheader("Onboard a new Manager")
-        with st.form("new_manager"):
-            name = st.text_input("Manager name", key="manager_name")
-            submitted = st.form_submit_button("Create Manager")
-            if submitted and name:
-                services.party_repo.add(Party(party_type="manager", display_name=name))
-                st.success(f"Manager '{name}' created.")
-                st.rerun()
-
-    with col2:
-        st.subheader("Assign an Agent to a Manager")
+    with st.container(border=True):
+        st.markdown("**② Create an assignment**")
         agents = services.party_repo.list_by_type("agent")
         managers = services.party_repo.list_by_type("manager")
         if not agents or not managers:

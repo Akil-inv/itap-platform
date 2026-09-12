@@ -34,8 +34,28 @@ export DATABASE_URL=postgresql://user:pass@host:5432/itap
 gate — see `capabilities/assignment/src/assignment/rules_config.py`.
 
 On first run, with no Parties yet, the app offers a "Seed demo data"
-button (1 Functional Owner, 2 Managers, 2 Agents, 2 Assignments) so there
-is something to click through immediately.
+button (1 Functional Owner, 2 Managers, 2 Agents, 3 Assignments — Casey
+is deliberately double-booked to Alex and Bailey, to demo cross-team
+bifurcation) so there is something to click through immediately.
+
+## Theme and journey (`theme.py`, `journey.py`)
+
+`theme.py` injects CSS (hides Streamlit's default chrome, applies a
+card/typography theme) and defines the `.itap-stepper` component styles.
+`journey.py` reads an Assignment's existing state (no new states added —
+this is a pure presentation-layer read of the State pattern already in
+`capabilities/assignment`) and renders it as a 3-stage stepper: Goal
+Setting → Active → Closed. Both Manager and Agent per-assignment panels
+use this so each assignment reads as a journey rather than a flat pile of
+unordered forms.
+
+**Known dependency gotcha:** `st.graphviz_chart` (used in the Functional
+Owner's Org Structure tab) needs the `graphviz` *Python package*
+installed (it's in `requirements.txt`) even though rendering happens
+client-side — without it the chart silently renders as an empty,
+zero-size element with no error. Also: DOT node identifiers can't contain
+hyphens unless quoted, so UUID-based node ids use `.hex` (no hyphens),
+not `str(uuid)`.
 
 ## Smoke test
 
@@ -47,4 +67,16 @@ to `app.py`, `services.py`, or `views/`:
 
 ```bash
 rm -f smoke_test.db && python smoke_test.py
+```
+
+## Visual verification (`screenshot.py`)
+
+Not part of any test suite — a one-off dev tool using Playwright to drive
+the running server and save real screenshots, since neither `pytest` nor
+`AppTest` renders CSS. Useful after any theme/layout change:
+
+```bash
+pip install playwright  # not in requirements.txt — dev-only
+streamlit run app.py --server.headless true --server.port 8765 &
+python screenshot.py   # saves PNGs to /tmp/itap_screens
 ```

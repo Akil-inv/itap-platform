@@ -10,7 +10,7 @@ os.environ["DATABASE_URL"] = "sqlite:///./smoke_test.db"
 
 from streamlit.testing.v1 import AppTest
 
-at = AppTest.from_file("app.py")
+at = AppTest.from_file("app.py", default_timeout=15)
 at.run()
 assert not at.exception, f"Initial render raised: {at.exception}"
 assert "Seed demo data" in str(at.button[0].label)

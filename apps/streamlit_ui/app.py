@@ -14,6 +14,7 @@ import streamlit as st
 from party_identity.domain import Party
 from rbac_scope import Role, Viewer
 
+import theme
 from party_helpers import party_label
 from services import get_services
 from views import agent as agent_view
@@ -21,6 +22,7 @@ from views import functional_owner as owner_view
 from views import manager as manager_view
 
 st.set_page_config(page_title="ITAP", layout="wide")
+theme.inject()
 
 services = get_services()
 party_repo = services.party_repo
