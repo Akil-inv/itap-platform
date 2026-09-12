@@ -133,39 +133,34 @@ def render(services) -> None:
                             st.rerun()
                 st.write("")
 
+            # Solves exactly one problem: a genuinely empty deployment has no
+            # one to click on this sign-in page, so there is no way in at
+            # all. This is deliberately Admin-only and deliberately only
+            # shown while no one exists yet — it is not a general "add
+            # anyone" convenience. Every other role comes from Bulk Setup
+            # (or the authenticated, admin-only Onboard & Assign back door),
+            # per docs/associate_journey_redesign.md's "no loose profiles"
+            # principle; a public, unauthenticated sign-in page has no
+            # business creating Managers or Associates.
             if not any_people:
                 st.info("No one is set up yet — add the first ITAP Admin below.")
-
-            st.divider()
-            with st.expander("Add a new person (ITAP Admin setup)"):
-                st.caption(
-                    "Email is optional today, but is the field a future SSO "
-                    "integration would match against — worth filling in now. "
-                    "On a brand-new deployment, use this to create the first "
-                    "ITAP Admin, then sign in as them and use Bulk Setup for "
-                    "everyone else."
-                )
-                role_choice = st.radio(
-                    "Role",
-                    ["ITAP Admin", "Associate", "Manager"],
-                    horizontal=True,
-                    key="home_new_person_role",
-                )
-                role_to_party_type = {
-                    "ITAP Admin": "functional_owner",
-                    "Associate": "agent",
-                    "Manager": "manager",
-                }
-                with st.form("home_new_person"):
-                    name = st.text_input("Name", key="home_new_person_name")
-                    email = st.text_input("Email (optional)", key="home_new_person_email")
-                    if st.form_submit_button(f"Create {role_choice}") and name:
-                        attrs = {"email": email} if email else {}
-                        services.party_repo.add(
-                            Party(
-                                party_type=role_to_party_type[role_choice],
-                                display_name=name,
-                                attributes=attrs,
+                with st.expander("Add the first ITAP Admin", expanded=True):
+                    st.caption(
+                        "Email is optional today, but is the field a future SSO "
+                        "integration would match against — worth filling in now. "
+                        "Once created, sign in as them and use Bulk Setup to "
+                        "bring in everyone else."
+                    )
+                    with st.form("home_new_admin"):
+                        name = st.text_input("Admin name", key="home_new_admin_name")
+                        email = st.text_input("Email (optional)", key="home_new_admin_email")
+                        if st.form_submit_button("Create ITAP Admin") and name:
+                            attrs = {"email": email} if email else {}
+                            services.party_repo.add(
+                                Party(
+                                    party_type="functional_owner",
+                                    display_name=name,
+                                    attributes=attrs,
+                                )
                             )
-                        )
-                        st.rerun()
+                            st.rerun()
