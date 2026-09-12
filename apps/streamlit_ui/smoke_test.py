@@ -41,6 +41,16 @@ assert any("Casey" in i.value and "more than one manager" in i.value for i in at
     "Expected a bifurcation callout naming Casey"
 )
 
+# Overdue tab: both subsections render (all content renders regardless
+# of which tab is visually selected)
+subheaders = [s.value for s in at.subheader]
+assert "Overdue goal setting" in subheaders
+assert "Overdue closure" in subheaders
+
+# Manager Handoff tab: the reassignment form exists (Alex and Bailey
+# both exist in the seed data)
+assert any(b.label == "Reassign their whole team" for b in at.button)
+
 # Switch person -> sign in as the manager, Alex
 click_button_labeled(at, "Switch person")
 assert not at.exception
@@ -54,6 +64,12 @@ assert goal_text_areas, "Expected a goal-setting text area for the manager's ass
 goal_text_areas[0].set_value("Ship the onboarding module").run()
 click_button_labeled(at, "Record goal setting")
 assert not at.exception, f"Recording goal setting raised: {at.exception}"
+
+# The Manager-facing "Swap to new manager" primitive was removed per the
+# product/spec ownership fix (central team reassigns, not the manager
+# unilaterally) — replaced by "Withdraw" for early exits.
+assert not any("Swap" in (b.label or "") for b in at.button)
+assert any(b.label == "Withdraw this assignment" for b in at.button)
 
 # Switch person -> sign in as the agent, Casey
 click_button_labeled(at, "Switch person")

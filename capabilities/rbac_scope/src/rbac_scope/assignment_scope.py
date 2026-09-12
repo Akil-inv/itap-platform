@@ -80,6 +80,33 @@ class ScopedAssignmentQueries:
             return overdue
         return [a for a in overdue if a.manager_id == viewer.party_id]
 
+    def list_overdue_closure(
+        self, viewer: Viewer, older_than_days: Optional[int] = None, as_of: Optional[date] = None
+    ) -> list[Assignment]:
+        if viewer.role == Role.AGENT:
+            raise PermissionDenied("Agents may not query overdue closure")
+        overdue = self._service.list_overdue_closure(older_than_days, as_of=as_of)
+        if viewer.role == Role.FUNCTIONAL_OWNER:
+            return overdue
+        return [a for a in overdue if a.manager_id == viewer.party_id]
+
+    def reassign_all_from_departing_manager(
+        self,
+        viewer: Viewer,
+        old_manager_id: UUID,
+        new_manager_id: UUID,
+        notes: Optional[str] = None,
+        as_of: Optional[date] = None,
+    ) -> list[Assignment]:
+        """Central-team-only: moving every one of a departing Manager's
+        Agents is an organizational decision, not something a Manager
+        (even the departing one) should trigger themselves."""
+        if viewer.role != Role.FUNCTIONAL_OWNER:
+            raise PermissionDenied("Only the Functional Owner may reassign a departing manager's team")
+        return self._service.reassign_all_from_departing_manager(
+            old_manager_id, new_manager_id, notes=notes, as_of=as_of
+        )
+
     def consolidated_score(self, viewer: Viewer, agent_id: UUID) -> Optional[float]:
         """Average objective_score across every closed Assignment for one
         Agent. Functional Owner may query any Agent; an Agent may query

@@ -22,6 +22,22 @@ Page headings are product/task-oriented ("My Team", "My Journey",
 person appears as a "Welcome back" line under the heading, not as the
 page's identity.
 
+`ITAP_DEV_MODE` (default `true`) gates the "Switch person" control and
+the landing page's picker. Setting it to `false` removes the one-click
+"become anyone" affordance — a safety valve for a "production-ish"
+deployment before real auth exists, not a real security boundary (the
+underlying service calls still have no auth of their own).
+
+Onboarding forms (`home.py`'s setup expander, and the Functional Owner's
+"Onboard & Assign") include an optional email field, stored under
+`Party.attributes["email"]` — the field a future SSO integration would
+match an incoming identity against. Nothing reads it yet.
+
+Every person-picker (sign-in buttons, Agent/Manager dropdowns) runs
+through `party_helpers.disambiguate_labels`, which appends a short id
+suffix only when two people share a display name — otherwise two Agents
+both named "Casey" would be indistinguishable in every selection UI.
+
 ## Running locally
 
 ```bash
@@ -74,6 +90,32 @@ inline JS, no library). Shows active assignments only — this is "who
 reports to whom right now," not a history view (that's the "All
 Assignments" tab). An Agent with concurrent, cross-team assignments gets
 more than one incoming edge — it's a graph, not a strict tree, by design.
+
+## Lifecycle beyond normal completion
+
+Besides the "completed" closure path (scored, gated by the minimum
+elapsed period and by goal setting existing), two administrative closure
+paths exist, neither scored and neither gated by minimum-elapsed or
+goal-setting — these are organizational events, not performance
+assessments:
+
+- **Withdraw** (Manager's per-assignment "Withdraw" tab) — the Agent
+  left the program or this rotation early.
+- **Manager Handoff** (Functional Owner's "Manager Handoff" tab,
+  central-team-only via RBAC) — a Manager is leaving; every one of their
+  active Assignments is closed (`closed_reason="manager_departed"`) and
+  a fresh Assignment opens for each Agent under the new Manager in one
+  action.
+
+Both record a free-text `closure_note` instead of a `ClosureRecord`.
+
+Note: the earlier Manager-facing "Swap to new manager" (self-service,
+scored) was removed — it conflicted with the spec ("central team can
+swap them"), letting a Manager unilaterally hand an Agent to whichever
+peer they chose. The equivalent normal-rotation flow is now: Manager
+closes normally (Close assignment tab, scored) once tenure is complete;
+Functional Owner creates the next Assignment via "Onboard & Assign" —
+both already-existing primitives, no new code needed for that case.
 
 ## Smoke test
 

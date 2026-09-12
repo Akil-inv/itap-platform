@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 from typing import Optional
 from uuid import UUID
 
+from ..clock import today
 from ..domain import (
     Assignment,
     AssignmentNotFound,
     AssignmentState,
     ClosureRecord,
+    ConcurrentModification,
     GoalSetting,
     ReverseFeedback,
 )
@@ -24,38 +27,47 @@ class InMemoryAssignmentRepo:
     def add(self, assignment: Assignment) -> None:
         if assignment.id in self._assignments:
             raise ValueError(f"Assignment {assignment.id} already exists")
-        self._assignments[assignment.id] = assignment
+        self._assignments[assignment.id] = replace(assignment)
 
     def get(self, assignment_id: UUID) -> Assignment:
         try:
-            return self._assignments[assignment_id]
+            # Return a copy: callers mutate freely, but a stale version
+            # they hold won't silently overwrite a newer stored one —
+            # update()/close_with_record() enforce that explicitly.
+            return replace(self._assignments[assignment_id])
         except KeyError:
             raise AssignmentNotFound(assignment_id) from None
 
-    def update(self, assignment: Assignment) -> None:
-        if assignment.id not in self._assignments:
+    def _write(self, assignment: Assignment) -> Assignment:
+        current = self._assignments.get(assignment.id)
+        if current is None:
             raise AssignmentNotFound(assignment.id)
-        self._assignments[assignment.id] = assignment
+        if current.version != assignment.version:
+            raise ConcurrentModification(assignment.id)
+        updated = replace(assignment, version=assignment.version + 1)
+        self._assignments[assignment.id] = updated
+        return updated
+
+    def update(self, assignment: Assignment) -> None:
+        self._write(assignment)
 
     def close_with_record(self, assignment: Assignment, closure: ClosureRecord) -> None:
-        if assignment.id not in self._assignments:
-            raise AssignmentNotFound(assignment.id)
-        self._assignments[assignment.id] = assignment
+        self._write(assignment)
         self._closure_records[closure.assignment_id] = closure
 
     def list_all(self) -> list[Assignment]:
-        return list(self._assignments.values())
+        return [replace(a) for a in self._assignments.values()]
 
     def list_by_agent(self, agent_id: UUID) -> list[Assignment]:
-        return [a for a in self._assignments.values() if a.agent_id == agent_id]
+        return [replace(a) for a in self._assignments.values() if a.agent_id == agent_id]
 
     def list_by_manager(self, manager_id: UUID) -> list[Assignment]:
-        return [a for a in self._assignments.values() if a.manager_id == manager_id]
+        return [replace(a) for a in self._assignments.values() if a.manager_id == manager_id]
 
     def list_active_without_goal_setting(
         self, older_than_days: int, as_of: Optional[date] = None
     ) -> list[Assignment]:
-        as_of = as_of or date.today()
+        as_of = as_of or today()
         result = []
         for assignment in self._assignments.values():
             if assignment.state != AssignmentState.ACTIVE:
@@ -63,8 +75,19 @@ class InMemoryAssignmentRepo:
             if assignment.id in self._goal_settings:
                 continue
             if (as_of - assignment.start_date).days >= older_than_days:
-                result.append(assignment)
+                result.append(replace(assignment))
         return result
+
+    def list_active_older_than(
+        self, older_than_days: int, as_of: Optional[date] = None
+    ) -> list[Assignment]:
+        as_of = as_of or today()
+        return [
+            replace(a)
+            for a in self._assignments.values()
+            if a.state == AssignmentState.ACTIVE
+            and (as_of - a.start_date).days >= older_than_days
+        ]
 
     def add_goal_setting(self, goal_setting: GoalSetting) -> None:
         self._goal_settings[goal_setting.assignment_id] = goal_setting

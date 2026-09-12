@@ -75,6 +75,7 @@ def test_manager_cannot_fetch_an_assignment_not_theirs(world):
 
 
 def test_agent_can_see_their_own_closure_record(world):
+    world["service"].record_goal_setting(world["assignment_a"].id, "Ship feature X")
     world["service"].close_assignment(
         world["assignment_a"].id,
         objective_score=4.0,
@@ -89,6 +90,7 @@ def test_agent_can_see_their_own_closure_record(world):
 
 
 def test_agent_cannot_see_another_agents_closure_record(world):
+    world["service"].record_goal_setting(world["assignment_a"].id, "Ship feature X")
     world["service"].close_assignment(
         world["assignment_a"].id,
         objective_score=4.0,
@@ -133,6 +135,7 @@ def test_overdue_goal_setting_scoped_by_role(world):
 
 
 def test_consolidated_score_functional_owner_and_self_only(world):
+    world["service"].record_goal_setting(world["assignment_a"].id, "Ship feature X")
     world["service"].close_assignment(
         world["assignment_a"].id,
         objective_score=4.0,
@@ -158,3 +161,37 @@ def test_consolidated_score_none_when_no_closures_yet(world):
     owner_view = Viewer(party_id=uuid4(), role=Role.FUNCTIONAL_OWNER)
 
     assert world["scope"].consolidated_score(owner_view, world["agent_c"]) is None
+
+
+def test_overdue_closure_scoped_by_role(world):
+    world["service"].record_goal_setting(world["assignment_a"].id, "Ship feature X")
+    owner_view = Viewer(party_id=uuid4(), role=Role.FUNCTIONAL_OWNER)
+    manager_a_view = Viewer(party_id=world["manager_a"], role=Role.MANAGER)
+    agent_view = Viewer(party_id=world["agent_a"], role=Role.AGENT)
+
+    # 90 days elapsed, well past 2x the 30-day minimum
+    owner_overdue = world["scope"].list_overdue_closure(owner_view, as_of=date(2026, 4, 1))
+    manager_overdue = world["scope"].list_overdue_closure(manager_a_view, as_of=date(2026, 4, 1))
+
+    assert {a.id for a in owner_overdue} == {world["assignment_a"].id, world["assignment_b"].id}
+    assert [a.id for a in manager_overdue] == [world["assignment_a"].id]
+
+    with pytest.raises(PermissionDenied):
+        world["scope"].list_overdue_closure(agent_view)
+
+
+def test_reassign_departing_manager_is_functional_owner_only(world):
+    owner_view = Viewer(party_id=uuid4(), role=Role.FUNCTIONAL_OWNER)
+    manager_view = Viewer(party_id=world["manager_a"], role=Role.MANAGER)
+    new_manager = uuid4()
+
+    with pytest.raises(PermissionDenied):
+        world["scope"].reassign_all_from_departing_manager(
+            manager_view, world["manager_a"], new_manager
+        )
+
+    reassigned = world["scope"].reassign_all_from_departing_manager(
+        owner_view, world["manager_a"], new_manager, as_of=date(2026, 3, 1)
+    )
+    assert [a.manager_id for a in reassigned] == [new_manager]
+    assert world["repo"].get(world["assignment_a"].id).state.value == "closed"

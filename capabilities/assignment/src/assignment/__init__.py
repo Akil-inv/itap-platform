@@ -3,6 +3,8 @@ from .domain import (
     AssignmentNotFound,
     AssignmentState,
     ClosureRecord,
+    ConcurrentModification,
+    DuplicateAssignment,
     GoalSetting,
     ReverseFeedback,
 )
@@ -15,6 +17,8 @@ __all__ = [
     "AssignmentNotFound",
     "AssignmentState",
     "ClosureRecord",
+    "ConcurrentModification",
+    "DuplicateAssignment",
     "GoalSetting",
     "ReverseFeedback",
     "AssignmentRepo",

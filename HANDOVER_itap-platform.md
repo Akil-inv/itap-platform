@@ -151,12 +151,34 @@ Last updated: 2026-09-11
   package installed or it silently rendered empty (moot now — replaced
   entirely), and DOT node ids built from UUIDs needed `.hex` (hyphens
   break unquoted DOT identifiers) before being replaced.
+- Scenario-based gap analysis + full fix pass (2026-09-12, same day):
+  played every role through every lifecycle scenario, found 18 gaps,
+  fixed all of them. See "Resolved via scenario-based gap analysis" in
+  `docs/architecture.md` for the full list. Highlights: end_date/score/
+  duplicate-assignment validation that didn't exist before; optimistic
+  concurrency (`Assignment.version` + `ConcurrentModification`) so two
+  concurrent writers can't silently clobber each other; closure now
+  actually requires goal setting to exist, matching the UI copy that
+  already claimed it did; reverse feedback now gated by the same
+  minimum-elapsed period as closure; two new administrative closure
+  paths (`withdraw_assignment`, `reassign_all_from_departing_manager`)
+  that don't force a fabricated performance score; removed the
+  Manager-facing `swap_to_new_manager` entirely — it gave managers
+  reassignment authority the spec reserves for the central team;
+  duplicate-display-name disambiguation in every person-picker; graceful
+  handling of an unrecognized `party_type` instead of a crash;
+  `ITAP_DEV_MODE` flag as a safety valve (not a real security boundary)
+  on the identity-switching UI. `capabilities/assignment` grew from 25 to
+  55 tests, `rbac_scope` from 11 to 13, all passing. Verified with the
+  smoke test plus real Playwright screenshots of the duplicate-assignment
+  error, the new Withdraw tab, Manager Handoff, and the split
+  Overdue-goal-setting/Overdue-closure view.
 
 ### In Progress
 
 - Nothing mid-flight; the party_identity + assignment + rbac_scope +
   Streamlit UI slice (including the journey/theme/org-tree/landing-page
-  pass) is complete and demoable.
+  pass and the scenario-based gap-fix pass) is complete and demoable.
 
 ### Next
 
@@ -171,7 +193,16 @@ Last updated: 2026-09-11
 
 ### Known Issues
 
-- None yet in code. Three CML platform questions are open and block only
+- `attributes["email"]` is a convention, not an enforced/validated
+  schema field — fine for now, worth revisiting when real auth needs
+  something to map against.
+- `ITAP_DEV_MODE=false` hides the "Switch person" UI but doesn't add
+  real authorization to the underlying service calls — not a substitute
+  for real auth.
+- Elapsed-day calculations now use UTC consistently (`assignment.clock.today()`)
+  rather than server-local time, but this still doesn't account for a
+  given user's own timezone in a geographically distributed program.
+- Three CML platform questions are open and block only
   Phase 2+ (Iceberg sync, Flowable/Drools adapters), not the current
   slice — see "Open platform questions" in `docs/architecture.md`:
   package/runtime install rights, internal pod-to-pod networking, and

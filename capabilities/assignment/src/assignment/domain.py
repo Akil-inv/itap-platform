@@ -13,17 +13,33 @@ from enum import Enum
 from typing import Optional
 from uuid import UUID, uuid4
 
+MIN_OBJECTIVE_SCORE = 0.0
+MAX_OBJECTIVE_SCORE = 5.0
+
 
 class AssignmentState(str, Enum):
     ACTIVE = "active"
     CLOSED = "closed"
 
 
+# closed_reason values:
+#   "completed"        - normal tenure completion, scored via ClosureRecord
+#   "withdrawn"         - Agent left early; no score, see closure_note
+#   "manager_departed"  - Manager left; Agent reassigned, see closure_note
+CLOSED_REASONS = {"completed", "withdrawn", "manager_departed"}
+
+
 @dataclass
 class Assignment:
     """An Agent placed under a Manager for a period. One Agent may hold
     multiple concurrent Assignments (cross-team bifurcation) — each is an
-    independent record scored only by its own Manager."""
+    independent record scored only by its own Manager.
+
+    `version` is used for optimistic concurrency: every persisted update
+    must supply the version it read, and adapters must reject (raise
+    ConcurrentModification) a write against a version that has since
+    moved — see AssignmentRepo.update / close_with_record.
+    """
 
     agent_id: UUID
     manager_id: UUID
@@ -31,8 +47,16 @@ class Assignment:
     id: UUID = field(default_factory=uuid4)
     end_date: Optional[date] = None
     state: AssignmentState = AssignmentState.ACTIVE
-    closed_reason: Optional[str] = None  # "completed" | "swapped"
+    closed_reason: Optional[str] = None
+    closure_note: Optional[str] = None
+    version: int = 0
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+    def __post_init__(self) -> None:
+        if self.end_date is not None and self.end_date < self.start_date:
+            raise ValueError(
+                f"end_date ({self.end_date}) cannot be before start_date ({self.start_date})"
+            )
 
 
 @dataclass
@@ -40,7 +64,9 @@ class GoalSetting:
     """Recorded once manager and agent agree on goals for an Assignment.
     Not a gate on the Assignment starting — but its absence is queryable
     so the system can remind the manager (see AssignmentRepo.
-    list_active_without_goal_setting)."""
+    list_active_without_goal_setting), and it IS required before closure
+    (see AssignmentService.close_assignment) — closing without it would
+    mean scoring against goals that were never set."""
 
     assignment_id: UUID
     goals: str
@@ -60,12 +86,21 @@ class ClosureRecord:
     id: UUID = field(default_factory=uuid4)
     recorded_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
+    def __post_init__(self) -> None:
+        if not (MIN_OBJECTIVE_SCORE <= self.objective_score <= MAX_OBJECTIVE_SCORE):
+            raise ValueError(
+                f"objective_score must be between {MIN_OBJECTIVE_SCORE} and "
+                f"{MAX_OBJECTIVE_SCORE}, got {self.objective_score}"
+            )
+
 
 @dataclass(frozen=True)
 class ReverseFeedback:
     """Agent's feedback about the Manager they worked under. Immutable for
-    the same reason as ClosureRecord. Gated only by the minimum-elapsed
-    rule, not by Assignment state — can be given before or after closure."""
+    the same reason as ClosureRecord. Gated by the same minimum-elapsed
+    rule as closure (see AssignmentService.record_reverse_feedback) —
+    not by Assignment state, so it can be given before or after
+    closure."""
 
     assignment_id: UUID
     notes: str
@@ -77,3 +112,26 @@ class AssignmentNotFound(Exception):
     def __init__(self, assignment_id: UUID):
         super().__init__(f"Assignment {assignment_id} not found")
         self.assignment_id = assignment_id
+
+
+class ConcurrentModification(Exception):
+    """Raised when a write is attempted against a stale Assignment version
+    — someone else (another tab, another user) updated it first."""
+
+    def __init__(self, assignment_id: UUID):
+        super().__init__(
+            f"Assignment {assignment_id} was modified by someone else — reload and retry."
+        )
+        self.assignment_id = assignment_id
+
+
+class DuplicateAssignment(Exception):
+    """Raised when creating an Assignment that would duplicate an existing
+    active Assignment for the same Agent/Manager pair."""
+
+    def __init__(self, agent_id: UUID, manager_id: UUID):
+        super().__init__(
+            f"Agent {agent_id} already has an active assignment with manager {manager_id}"
+        )
+        self.agent_id = agent_id
+        self.manager_id = manager_id

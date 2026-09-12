@@ -11,6 +11,8 @@ import streamlit as st
 from party_identity.domain import Party
 from rbac_scope import Role
 
+from party_helpers import disambiguate_labels
+
 ROLE_SECTIONS = [
     (Role.FUNCTIONAL_OWNER, "Functional Owner", "Runs the whole program."),
     (Role.MANAGER, "Managers", "Lead a team of Agents."),
@@ -38,26 +40,39 @@ def render(services) -> None:
         if not parties:
             continue
         st.markdown(f"**{heading}** — {subtitle}")
-        cols = st.columns(min(len(parties), 4) or 1)
-        for i, party in enumerate(parties):
+        labels = disambiguate_labels(parties, label_fn=lambda p: p.display_name)
+        cols = st.columns(min(len(labels), 4) or 1)
+        for i, (label, party) in enumerate(labels.items()):
             with cols[i % len(cols)]:
-                if st.button(party.display_name, key=f"signin_{party.id}", width='stretch'):
+                if st.button(label, key=f"signin_{party.id}", width='stretch'):
                     st.session_state["viewer_party_id"] = str(party.id)
                     st.rerun()
         st.write("")
 
     st.divider()
     with st.expander("Add a new person (Functional Owner setup)"):
+        st.caption(
+            "Email is optional today, but is the field a future SSO "
+            "integration would match against — worth filling in now."
+        )
         col1, col2 = st.columns(2)
         with col1:
             with st.form("home_new_agent"):
                 name = st.text_input("Agent name")
+                email = st.text_input("Email (optional)", key="home_agent_email")
                 if st.form_submit_button("Create Agent") and name:
-                    services.party_repo.add(Party(party_type="agent", display_name=name))
+                    attrs = {"email": email} if email else {}
+                    services.party_repo.add(
+                        Party(party_type="agent", display_name=name, attributes=attrs)
+                    )
                     st.rerun()
         with col2:
             with st.form("home_new_manager"):
                 name = st.text_input("Manager name", key="home_manager_name")
+                email = st.text_input("Email (optional)", key="home_manager_email")
                 if st.form_submit_button("Create Manager") and name:
-                    services.party_repo.add(Party(party_type="manager", display_name=name))
+                    attrs = {"email": email} if email else {}
+                    services.party_repo.add(
+                        Party(party_type="manager", display_name=name, attributes=attrs)
+                    )
                     st.rerun()

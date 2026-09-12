@@ -139,13 +139,34 @@ runnable against Postgres with an in-process rule adapter).
    SQL adapters, contract tests passing.
 2. **Assignment Engine + Rule Engine + Scoring & Closure** — done, as
    `capabilities/assignment/`. Covers: create assignment (goal-setting not
-   a gate), manager-only extension, cross-team bifurcation (independent
-   Assignment records per manager), min-elapsed-gated closure with
-   objective+subjective scoring, reverse feedback (gated only by elapsed
-   time, not assignment state), swap-to-new-manager, and an overdue
-   goal-setting query for a future reminder job. 23 tests passing across
-   in-memory + SQL adapters. Built directly with ITAP's vocabulary — see
-   "Decision" note above.
+   a gate, rejects end_date < start_date, rejects a duplicate active
+   Agent/Manager pair), manager-only extension (rejects shortening —
+   new_end_date must be later than the current one), cross-team
+   bifurcation (independent Assignment records per manager),
+   min-elapsed-and-goal-setting-gated closure with objective+subjective
+   scoring (score bounds validated at the domain level, not just the UI
+   slider), reverse feedback (gated by the same minimum-elapsed period as
+   closure, not by assignment state), two administrative closure paths
+   not gated by minimum-elapsed or goal-setting (`withdraw_assignment` —
+   Agent leaves early, no score; `reassign_all_from_departing_manager` —
+   Manager leaves, bulk-closes and reopens their team under a new
+   manager), optimistic concurrency (a `version` column; a write against
+   a stale copy raises `ConcurrentModification` instead of silently
+   overwriting a concurrent change), and overdue-goal-setting /
+   overdue-closure queries for a future reminder job. 55 tests passing
+   across in-memory + SQL adapters. Built directly with ITAP's
+   vocabulary — see "Decision" note above.
+
+   The earlier Manager-facing `swap_to_new_manager` (self-service,
+   scored) was **removed** (2026-09-12, gap-analysis pass) — it let a
+   Manager unilaterally hand an Agent to whichever peer they chose,
+   conflicting with the spec ("central team can swap them"). The normal
+   rotation-swap case now composes two already-existing primitives
+   instead: Manager closes normally (scored) once tenure completes;
+   Functional Owner creates the next Assignment via Onboard & Assign.
+   `reassign_all_from_departing_manager` is a genuinely different case
+   (no score — it's not a performance moment) and is
+   Functional-Owner-only via RBAC.
 3. **RBAC Scope** — done, as `capabilities/rbac_scope/`.
    `ScopedAssignmentQueries` computes visibility from the Viewer's
    relationship to each Assignment (manager_id/agent_id match), not from
@@ -154,9 +175,11 @@ runnable against Postgres with an in-process rule adapter).
    Functional Owner also gets `consolidated_score(agent_id)` — an average
    objective_score across an Agent's closed assignments; Agents may query
    only their own, Managers not at all (per spec: their scope stays
-   limited to what pertains to their own assignments). 11 tests passing.
-   Required adding `AssignmentRepo.list_all()` for the Functional Owner's
-   blanket-visibility need.
+   limited to what pertains to their own assignments). `list_overdue_closure`
+   and `reassign_all_from_departing_manager` (Functional-Owner-only) added
+   in the same gap-analysis pass as the service-layer changes above.
+   13 tests passing. Required adding `AssignmentRepo.list_all()` for the
+   Functional Owner's blanket-visibility need.
 4. **Streamlit UI** — done, as `apps/streamlit_ui/`. Thin front door over
    `party_identity` + `assignment` + `rbac_scope`; no business logic of
    its own. Identity is a dev-mode landing/sign-in page (`home.py`) —
@@ -186,8 +209,63 @@ runnable against Postgres with an in-process rule adapter).
 - Minimum elapsed period before closure/feedback: 30 days, configurable
   per `AssignmentService(min_days_before_closure=...)` — not yet
   surfaced as an admin-editable setting.
-- No escalation path yet if a manager never closes/scores an assignment;
-  only the overdue *goal-setting* query exists so far.
-- Manager leaving the org mid-assignment: not handled.
 - ClosureRecord and ReverseFeedback are append-only by design (no update
   method) for audit/dispute integrity — confirmed acceptable for v1.
+- `date.today()` calls were replaced with `assignment.clock.today()`
+  (UTC-based) throughout the `assignment` package, removing server-host
+  timezone ambiguity — this does not solve per-user local time for a
+  geographically distributed program, just standardizes the server-side
+  clock.
+- No field yet reserved for an external identity (email/SSO subject) as
+  a first-class Party attribute — `attributes["email"]` is populated
+  optionally by the onboarding forms as a convention, not enforced or
+  validated. Whatever real auth eventually maps against should confirm
+  this convention or replace it.
+- `ITAP_DEV_MODE=false` hides the identity-switching UI but is a safety
+  valve, not a security boundary — the underlying service calls have no
+  auth of their own yet. Real auth remains the actual fix.
+
+### Resolved via scenario-based gap analysis (2026-09-12)
+
+The following gaps were found by walking every role through every
+lifecycle scenario, then fixed in the same pass — see
+`capabilities/assignment/` (rules_config.py, service.py, domain.py,
+adapters) and `apps/streamlit_ui/` for the changes:
+
+- No `end_date >= start_date` validation → now enforced in
+  `Assignment.__post_init__`.
+- Extension could shorten an assignment → guard now requires
+  `new_end_date` later than the current end (or start) date.
+- Closure didn't require goal setting to exist → now a hard guard
+  condition, with a clear error message.
+- No bounds on `objective_score` → validated in `ClosureRecord.__post_init__`
+  (0–5), not just the UI slider.
+- Duplicate/overlapping Agent+Manager assignments were allowed → now
+  rejected (`DuplicateAssignment`) unless the prior one is closed.
+- No optimistic concurrency → `Assignment.version` + `ConcurrentModification`,
+  enforced identically in both adapters (in-memory returns copies so a
+  stale caller's write is actually detectable, matching SQL's WHERE-clause
+  behavior).
+- No "overdue closure" query → `list_overdue_closure` (repo + service +
+  RBAC-scoped), defaulting to 2x the minimum-elapsed threshold.
+- No early-termination path → `withdraw_assignment` (Manager-facing,
+  unscored administrative closure).
+- No manager-departure workflow → `reassign_all_from_departing_manager`
+  (Functional-Owner-only, bulk close + reopen under a new manager).
+- Manager-facing `swap_to_new_manager` conflated scoring with
+  reassignment authority the spec gives to the central team → removed;
+  see the note under block 2 above for the replacement flow.
+- Reverse feedback had no time gate, unlike closure scoring → now gated
+  by the same minimum-elapsed period.
+- Two people with the same display name were indistinguishable in every
+  picker → `party_helpers.disambiguate_labels` appends a short id suffix
+  only on collision.
+- No reserved field for a future external identity → `attributes["email"]`
+  convention added to onboarding forms (see MVP decisions above — still
+  a convention, not enforced).
+- Unknown/corrupted `party_type` crashed the app → now caught, shows an
+  error instead of a stack trace.
+- "Switch person" had no safety valve at all → `ITAP_DEV_MODE` flag
+  added (see MVP decisions above — still not a real security boundary).
+- Raw technical exception text reached end users → RuleEngine's fallback
+  message rewritten to be user-facing; most guard messages already were.

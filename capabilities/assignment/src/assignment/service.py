@@ -8,15 +8,23 @@ from datetime import date
 from typing import Optional
 from uuid import UUID
 
-from .domain import Assignment, ClosureRecord, GoalSetting, ReverseFeedback
+from .clock import today
+from .domain import (
+    Assignment,
+    ClosureRecord,
+    DuplicateAssignment,
+    GoalSetting,
+    ReverseFeedback,
+)
 from .ports import AssignmentRepo
-from .rules import RuleEngine
-from .rules_config import default_transition_table
+from .rules import RuleEngine, TransitionDenied
+from .rules_config import default_transition_table, guard_min_elapsed
 
 
 class AssignmentService:
     def __init__(self, repo: AssignmentRepo, min_days_before_closure: int = 30):
         self._repo = repo
+        self._min_days_before_closure = min_days_before_closure
         self._engine = RuleEngine(default_transition_table(min_days_before_closure))
 
     def create_assignment(
@@ -26,6 +34,11 @@ class AssignmentService:
         start_date: date,
         end_date: Optional[date] = None,
     ) -> Assignment:
+        existing = self._repo.list_by_agent(agent_id)
+        for a in existing:
+            if a.manager_id == manager_id and a.state.value == "active":
+                raise DuplicateAssignment(agent_id, manager_id)
+
         assignment = Assignment(
             agent_id=agent_id,
             manager_id=manager_id,
@@ -63,12 +76,13 @@ class AssignmentService:
         as_of: Optional[date] = None,
     ) -> Assignment:
         assignment = self._repo.get(assignment_id)
+        has_goal_setting = self._repo.get_goal_setting(assignment_id) is not None
         closure = ClosureRecord(
             assignment_id=assignment_id,
             objective_score=objective_score,
             subjective_notes=subjective_notes,
         )
-        ctx: dict = {"closure": closure}
+        ctx: dict = {"closure": closure, "has_goal_setting": has_goal_setting}
         if as_of is not None:
             ctx["as_of"] = as_of
         self._engine.apply(assignment, "close_requested", ctx)
@@ -76,35 +90,62 @@ class AssignmentService:
         self._repo.close_with_record(assignment, closure)
         return assignment
 
-    def swap_to_new_manager(
-        self,
-        assignment_id: UUID,
-        new_manager_id: UUID,
-        objective_score: float,
-        subjective_notes: str,
-        new_start_date: date,
-        new_end_date: Optional[date] = None,
-        as_of: Optional[date] = None,
+    def close_administratively(
+        self, assignment_id: UUID, reason: str, notes: Optional[str] = None
     ) -> Assignment:
-        """Close the current Assignment (tenure complete) and open a new
-        one under a different manager."""
-        old = self._repo.get(assignment_id)
-        self.close_assignment(
-            assignment_id,
-            objective_score,
-            subjective_notes,
-            reason="swapped",
-            as_of=as_of,
-        )
-        return self.create_assignment(
-            agent_id=old.agent_id,
-            manager_id=new_manager_id,
-            start_date=new_start_date,
-            end_date=new_end_date,
-        )
+        """Withdrawal or manager-departure closure: no score required, not
+        gated by minimum-elapsed or goal-setting — these are
+        administrative events, not performance assessments."""
+        assignment = self._repo.get(assignment_id)
+        self._engine.apply(assignment, "administrative_close", {})
+        assignment.closed_reason = reason
+        assignment.closure_note = notes
+        self._repo.update(assignment)
+        return assignment
 
-    def record_reverse_feedback(self, assignment_id: UUID, notes: str) -> ReverseFeedback:
-        self._repo.get(assignment_id)
+    def withdraw_assignment(self, assignment_id: UUID, notes: Optional[str] = None) -> Assignment:
+        """The Agent left the program (or this rotation) early. Distinct
+        from close_assignment: no fabricated performance score."""
+        return self.close_administratively(assignment_id, reason="withdrawn", notes=notes)
+
+    def reassign_all_from_departing_manager(
+        self,
+        old_manager_id: UUID,
+        new_manager_id: UUID,
+        notes: Optional[str] = None,
+        as_of: Optional[date] = None,
+    ) -> list[Assignment]:
+        """The Manager is leaving. Close every one of their active
+        Assignments (reason="manager_departed", no score required) and
+        open a fresh Assignment for each Agent under the new manager,
+        starting today (or `as_of`)."""
+        if old_manager_id == new_manager_id:
+            raise ValueError("new_manager_id must differ from the departing manager")
+
+        start = as_of or today()
+        new_assignments = []
+        for assignment in self._repo.list_by_manager(old_manager_id):
+            if assignment.state.value != "active":
+                continue
+            self.close_administratively(assignment.id, reason="manager_departed", notes=notes)
+            new_assignments.append(
+                self.create_assignment(
+                    agent_id=assignment.agent_id,
+                    manager_id=new_manager_id,
+                    start_date=start,
+                )
+            )
+        return new_assignments
+
+    def record_reverse_feedback(
+        self, assignment_id: UUID, notes: str, as_of: Optional[date] = None
+    ) -> ReverseFeedback:
+        assignment = self._repo.get(assignment_id)
+        allowed, reason = guard_min_elapsed(
+            self._min_days_before_closure, assignment, {"as_of": as_of} if as_of else {}
+        )
+        if not allowed:
+            raise TransitionDenied(reason)
         feedback = ReverseFeedback(assignment_id=assignment_id, notes=notes)
         self._repo.add_reverse_feedback(feedback)
         return feedback
@@ -113,3 +154,12 @@ class AssignmentService:
         self, older_than_days: int, as_of: Optional[date] = None
     ) -> list[Assignment]:
         return self._repo.list_active_without_goal_setting(older_than_days, as_of=as_of)
+
+    def list_overdue_closure(
+        self, older_than_days: Optional[int] = None, as_of: Optional[date] = None
+    ) -> list[Assignment]:
+        """Assignments that are past the point they could have been
+        closed and still aren't — a Manager who never got around to it.
+        Defaults the threshold to double the minimum-elapsed period."""
+        threshold = older_than_days if older_than_days is not None else self._min_days_before_closure * 2
+        return self._repo.list_active_older_than(threshold, as_of=as_of)

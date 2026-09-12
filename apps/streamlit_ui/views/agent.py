@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import streamlit as st
+from assignment.rules import TransitionDenied
 from party_identity.domain import Party
 from rbac_scope import Viewer
 
@@ -42,7 +43,10 @@ def _assignment_journey(services, viewer: Viewer, assignment) -> None:
     closure = services.scope.get_closure_record(viewer, assignment.id)
     with st.container(border=True):
         st.markdown("**Your score**")
-        if closure:
+        if assignment.state.value == "closed" and assignment.closed_reason != "completed":
+            reason_label = (assignment.closed_reason or "closed").replace("_", " ")
+            st.caption(f"Closed — {reason_label}, not scored.")
+        elif closure:
             st.write(f"{closure.objective_score} — {closure.subjective_notes}")
         else:
             st.caption("Not yet scored.")
@@ -52,9 +56,12 @@ def _assignment_journey(services, viewer: Viewer, assignment) -> None:
         with st.form(f"feedback_{assignment.id}"):
             notes = st.text_area("Your feedback")
             if st.form_submit_button("Submit feedback") and notes:
-                services.assignment_service.record_reverse_feedback(assignment.id, notes)
-                st.success("Feedback recorded.")
-                st.rerun()
+                try:
+                    services.assignment_service.record_reverse_feedback(assignment.id, notes)
+                    st.success("Feedback recorded.")
+                    st.rerun()
+                except TransitionDenied as e:
+                    st.error(str(e))
 
         existing = services.scope.list_reverse_feedback(viewer, assignment.id)
         if existing:

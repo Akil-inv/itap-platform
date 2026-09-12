@@ -42,8 +42,9 @@ class RuleEngine:
         ]
         if not candidates:
             raise TransitionDenied(
-                f"No transition defined for state={assignment.state.value!r} "
-                f"event={event!r}"
+                f"This action isn't available for an assignment that is "
+                f"currently {assignment.state.value} "
+                f"(technical detail: no rule for event={event!r})"
             )
         rule = candidates[0]
         allowed, reason = rule.guard(assignment, ctx)

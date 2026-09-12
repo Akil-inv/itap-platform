@@ -7,6 +7,13 @@ multi-table transaction (Assignment.state + ClosureRecord in one commit).
 Postgres gives us that for free — take it while we have it. If this ever
 moves to an Iceberg-backed adapter, this method is the one that would need
 redesigning (e.g. via the outbox pattern), not the rest of the package.
+
+`update`/`close_with_record` enforce optimistic concurrency: the WHERE
+clause matches on `version` as well as `id`, so a write against a stale
+copy affects zero rows — the code below distinguishes "no such row"
+(AssignmentNotFound) from "row exists but version moved"
+(ConcurrentModification) with one extra SELECT inside the same
+transaction.
 """
 from __future__ import annotations
 
@@ -16,10 +23,12 @@ from uuid import UUID
 
 from sqlalchemy import (
     Column,
+    Connection,
     Date,
     DateTime,
     Engine,
     Float,
+    Integer,
     MetaData,
     String,
     Table,
@@ -29,11 +38,13 @@ from sqlalchemy import (
     update,
 )
 
+from ..clock import today
 from ..domain import (
     Assignment,
     AssignmentNotFound,
     AssignmentState,
     ClosureRecord,
+    ConcurrentModification,
     GoalSetting,
     ReverseFeedback,
 )
@@ -50,6 +61,8 @@ assignments_table = Table(
     Column("end_date", Date, nullable=True),
     Column("state", String(32), nullable=False),
     Column("closed_reason", String(32), nullable=True),
+    Column("closure_note", Text, nullable=True),
+    Column("version", Integer, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
 )
 
@@ -111,25 +124,30 @@ class SqlAssignmentRepo:
             raise AssignmentNotFound(assignment_id)
         return _row_to_assignment(row)
 
+    def _write(self, conn: Connection, assignment: Assignment) -> None:
+        result = conn.execute(
+            update(assignments_table)
+            .where(assignments_table.c.id == str(assignment.id))
+            .where(assignments_table.c.version == assignment.version)
+            .values(**_assignment_values(assignment, include_id=False, bump_version=True))
+        )
+        if result.rowcount == 0:
+            exists = conn.execute(
+                select(assignments_table.c.id).where(
+                    assignments_table.c.id == str(assignment.id)
+                )
+            ).first()
+            if exists is None:
+                raise AssignmentNotFound(assignment.id)
+            raise ConcurrentModification(assignment.id)
+
     def update(self, assignment: Assignment) -> None:
         with self._engine.begin() as conn:
-            result = conn.execute(
-                update(assignments_table)
-                .where(assignments_table.c.id == str(assignment.id))
-                .values(**_assignment_values(assignment, include_id=False))
-            )
-            if result.rowcount == 0:
-                raise AssignmentNotFound(assignment.id)
+            self._write(conn, assignment)
 
     def close_with_record(self, assignment: Assignment, closure: ClosureRecord) -> None:
         with self._engine.begin() as conn:
-            result = conn.execute(
-                update(assignments_table)
-                .where(assignments_table.c.id == str(assignment.id))
-                .values(**_assignment_values(assignment, include_id=False))
-            )
-            if result.rowcount == 0:
-                raise AssignmentNotFound(assignment.id)
+            self._write(conn, assignment)
             conn.execute(
                 insert(closure_records_table).values(
                     id=str(closure.id),
@@ -164,7 +182,7 @@ class SqlAssignmentRepo:
     def list_active_without_goal_setting(
         self, older_than_days: int, as_of: Optional[date] = None
     ) -> list[Assignment]:
-        as_of = as_of or date.today()
+        as_of = as_of or today()
         with self._engine.connect() as conn:
             goal_set_ids = {
                 r[0]
@@ -183,6 +201,22 @@ class SqlAssignmentRepo:
             if (as_of - assignment.start_date).days >= older_than_days:
                 result.append(assignment)
         return result
+
+    def list_active_older_than(
+        self, older_than_days: int, as_of: Optional[date] = None
+    ) -> list[Assignment]:
+        as_of = as_of or today()
+        with self._engine.connect() as conn:
+            rows = conn.execute(
+                select(assignments_table).where(
+                    assignments_table.c.state == AssignmentState.ACTIVE.value
+                )
+            ).mappings().all()
+        return [
+            a
+            for a in (_row_to_assignment(row) for row in rows)
+            if (as_of - a.start_date).days >= older_than_days
+        ]
 
     def add_goal_setting(self, goal_setting: GoalSetting) -> None:
         with self._engine.begin() as conn:
@@ -257,7 +291,9 @@ class SqlAssignmentRepo:
         ]
 
 
-def _assignment_values(assignment: Assignment, include_id: bool = True) -> dict:
+def _assignment_values(
+    assignment: Assignment, include_id: bool = True, bump_version: bool = False
+) -> dict:
     values = {
         "agent_id": str(assignment.agent_id),
         "manager_id": str(assignment.manager_id),
@@ -265,6 +301,8 @@ def _assignment_values(assignment: Assignment, include_id: bool = True) -> dict:
         "end_date": assignment.end_date,
         "state": assignment.state.value,
         "closed_reason": assignment.closed_reason,
+        "closure_note": assignment.closure_note,
+        "version": assignment.version + 1 if bump_version else assignment.version,
         "created_at": assignment.created_at,
     }
     if include_id:
@@ -281,5 +319,7 @@ def _row_to_assignment(row) -> Assignment:
         end_date=row["end_date"],
         state=AssignmentState(row["state"]),
         closed_reason=row["closed_reason"],
+        closure_note=row["closure_note"],
+        version=row["version"],
         created_at=row["created_at"],
     )

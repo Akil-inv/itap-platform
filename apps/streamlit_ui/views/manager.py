@@ -3,12 +3,15 @@ from __future__ import annotations
 from datetime import date
 
 import streamlit as st
+from assignment.domain import ConcurrentModification
 from assignment.rules import TransitionDenied
 from party_identity.domain import Party
 from rbac_scope import PermissionDenied, Viewer
 
 from journey import render_stepper, stage_index
-from party_helpers import party_label, safe_get_name
+from party_helpers import safe_get_name
+
+ACTIONABLE_ERRORS = (TransitionDenied, ConcurrentModification)
 
 
 def render(services, viewer: Viewer, current_party: Party) -> None:
@@ -50,8 +53,8 @@ def _assignment_journey(services, viewer: Viewer, assignment) -> None:
     if assignment.state.value == "active":
         with st.container(border=True):
             st.markdown("**Assignment in progress**")
-            tab_extend, tab_close, tab_swap = st.tabs(
-                ["Request extension", "Close assignment", "Swap to new manager"]
+            tab_extend, tab_close, tab_withdraw = st.tabs(
+                ["Request extension", "Close assignment", "Withdraw"]
             )
 
             with tab_extend:
@@ -68,10 +71,12 @@ def _assignment_journey(services, viewer: Viewer, assignment) -> None:
                             )
                             st.success("Extended.")
                             st.rerun()
-                        except TransitionDenied as e:
+                        except ACTIONABLE_ERRORS as e:
                             st.error(str(e))
 
             with tab_close:
+                if goal_setting is None:
+                    st.info("Record goal setting above first — there's nothing to close against yet.")
                 with st.form(f"close_{assignment.id}"):
                     score = st.slider("Objective score", 0.0, 5.0, 3.0, 0.1)
                     notes = st.text_area("Subjective notes")
@@ -82,54 +87,37 @@ def _assignment_journey(services, viewer: Viewer, assignment) -> None:
                             )
                             st.success("Closed.")
                             st.rerun()
-                        except TransitionDenied as e:
+                        except ACTIONABLE_ERRORS as e:
                             st.error(str(e))
 
-            with tab_swap:
-                other_managers = [
-                    p
-                    for p in services.party_repo.list_by_type("manager")
-                    if p.id != viewer.party_id
-                ]
-                if other_managers:
-                    labels = {party_label(p): p for p in other_managers}
-                    with st.form(f"swap_{assignment.id}"):
-                        new_manager_choice = st.selectbox("New manager", list(labels.keys()))
-                        swap_score = st.slider(
-                            "Closing objective score",
-                            0.0,
-                            5.0,
-                            3.0,
-                            0.1,
-                            key=f"swap_score_{assignment.id}",
-                        )
-                        swap_notes = st.text_area(
-                            "Closing notes", key=f"swap_notes_{assignment.id}"
-                        )
-                        new_start = st.date_input(
-                            "New assignment start date", value=date.today()
-                        )
-                        if st.form_submit_button("Swap"):
-                            try:
-                                services.assignment_service.swap_to_new_manager(
-                                    assignment.id,
-                                    new_manager_id=labels[new_manager_choice].id,
-                                    objective_score=swap_score,
-                                    subjective_notes=swap_notes,
-                                    new_start_date=new_start,
-                                )
-                                st.success("Swapped to new manager.")
-                                st.rerun()
-                            except TransitionDenied as e:
-                                st.error(str(e))
-                else:
-                    st.caption("No other managers exist to swap to yet.")
+            with tab_withdraw:
+                st.caption(
+                    "For when the Agent leaves the program or this rotation early — "
+                    "no score is recorded, this isn't a performance assessment."
+                )
+                with st.form(f"withdraw_{assignment.id}"):
+                    notes = st.text_area("Reason (optional)", key=f"withdraw_notes_{assignment.id}")
+                    if st.form_submit_button("Withdraw this assignment"):
+                        try:
+                            services.assignment_service.withdraw_assignment(
+                                assignment.id, notes=notes or None
+                            )
+                            st.success("Withdrawn.")
+                            st.rerun()
+                        except ACTIONABLE_ERRORS as e:
+                            st.error(str(e))
     else:
         with st.container(border=True):
             st.markdown("**Closed**")
-            closure = services.scope.get_closure_record(viewer, assignment.id)
-            if closure:
-                st.write(f"**Score:** {closure.objective_score} — {closure.subjective_notes}")
+            if assignment.closed_reason == "completed":
+                closure = services.scope.get_closure_record(viewer, assignment.id)
+                if closure:
+                    st.write(f"**Score:** {closure.objective_score} — {closure.subjective_notes}")
+            else:
+                reason_label = (assignment.closed_reason or "closed").replace("_", " ")
+                st.write(f"**Reason:** {reason_label}")
+                if assignment.closure_note:
+                    st.write(assignment.closure_note)
 
     with st.container(border=True):
         st.markdown("**Feedback from this Agent about you**")

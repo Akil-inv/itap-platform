@@ -3,11 +3,12 @@ from __future__ import annotations
 from datetime import date
 
 import streamlit as st
+from assignment.domain import DuplicateAssignment
 from party_identity.domain import Party
 from rbac_scope import Viewer
 
 import org_tree
-from party_helpers import party_label, safe_get_name
+from party_helpers import disambiguate_labels, safe_get_name
 
 
 def render(services, viewer: Viewer, current_party: Party) -> None:
@@ -19,7 +20,8 @@ def render(services, viewer: Viewer, current_party: Party) -> None:
             "All Assignments",
             "Org Structure",
             "Onboard & Assign",
-            "Overdue Goal Setting",
+            "Overdue",
+            "Manager Handoff",
             "Consolidated Scores",
         ]
     )
@@ -31,8 +33,10 @@ def render(services, viewer: Viewer, current_party: Party) -> None:
     with tabs[2]:
         _onboard_and_assign(services)
     with tabs[3]:
-        _overdue_goal_setting(services, viewer)
+        _overdue(services, viewer)
     with tabs[4]:
+        _manager_handoff(services, viewer)
+    with tabs[5]:
         _consolidated_scores(services, viewer)
 
 
@@ -108,21 +112,33 @@ def _onboard_and_assign(services) -> None:
 
     with st.container(border=True):
         st.markdown("**① Onboard people**")
+        st.caption(
+            "Email is optional today, but is the field a future SSO "
+            "integration would match against — worth filling in now."
+        )
         col1, col2 = st.columns(2)
         with col1:
             with st.form("new_agent"):
                 name = st.text_input("New Agent name")
+                email = st.text_input("Email (optional)", key="owner_agent_email")
                 submitted = st.form_submit_button("Create Agent")
                 if submitted and name:
-                    services.party_repo.add(Party(party_type="agent", display_name=name))
+                    attrs = {"email": email} if email else {}
+                    services.party_repo.add(
+                        Party(party_type="agent", display_name=name, attributes=attrs)
+                    )
                     st.success(f"Agent '{name}' created.")
                     st.rerun()
         with col2:
             with st.form("new_manager"):
                 name = st.text_input("New Manager name", key="manager_name")
+                email = st.text_input("Email (optional)", key="owner_manager_email")
                 submitted = st.form_submit_button("Create Manager")
                 if submitted and name:
-                    services.party_repo.add(Party(party_type="manager", display_name=name))
+                    attrs = {"email": email} if email else {}
+                    services.party_repo.add(
+                        Party(party_type="manager", display_name=name, attributes=attrs)
+                    )
                     st.success(f"Manager '{name}' created.")
                     st.rerun()
 
@@ -134,8 +150,8 @@ def _onboard_and_assign(services) -> None:
             st.info("Create at least one Agent and one Manager first.")
             return
 
-        agent_labels = {party_label(p): p for p in agents}
-        manager_labels = {party_label(p): p for p in managers}
+        agent_labels = disambiguate_labels(agents)
+        manager_labels = disambiguate_labels(managers)
 
         with st.form("new_assignment"):
             agent_choice = st.selectbox("Agent", list(agent_labels.keys()))
@@ -145,35 +161,100 @@ def _onboard_and_assign(services) -> None:
             end = st.date_input("End date", value=date.today()) if has_end else None
             submitted = st.form_submit_button("Create Assignment")
             if submitted:
-                services.assignment_service.create_assignment(
-                    agent_id=agent_labels[agent_choice].id,
-                    manager_id=manager_labels[manager_choice].id,
-                    start_date=start,
-                    end_date=end,
-                )
-                st.success("Assignment created.")
-                st.rerun()
+                try:
+                    services.assignment_service.create_assignment(
+                        agent_id=agent_labels[agent_choice].id,
+                        manager_id=manager_labels[manager_choice].id,
+                        start_date=start,
+                        end_date=end,
+                    )
+                    st.success("Assignment created.")
+                    st.rerun()
+                except DuplicateAssignment:
+                    st.error(
+                        "This Agent already has an active assignment with this "
+                        "Manager — close it first, or pick a different Manager."
+                    )
+                except ValueError as e:
+                    st.error(str(e))
 
 
-def _overdue_goal_setting(services, viewer: Viewer) -> None:
+def _overdue(services, viewer: Viewer) -> None:
+    st.subheader("Overdue goal setting")
     days = st.number_input("Overdue threshold (days)", min_value=1, value=14)
-    overdue = services.scope.list_overdue_goal_setting(viewer, older_than_days=int(days))
-    if not overdue:
+    overdue_goals = services.scope.list_overdue_goal_setting(viewer, older_than_days=int(days))
+    if not overdue_goals:
         st.write("Nothing overdue.")
-        return
-    rows = [
-        {
-            "Agent": safe_get_name(services.party_repo, a.agent_id),
-            "Manager": safe_get_name(services.party_repo, a.manager_id),
-            "Start": a.start_date,
-        }
-        for a in overdue
-    ]
-    st.dataframe(rows, width='stretch')
+    else:
+        rows = [
+            {
+                "Agent": safe_get_name(services.party_repo, a.agent_id),
+                "Manager": safe_get_name(services.party_repo, a.manager_id),
+                "Start": a.start_date,
+            }
+            for a in overdue_goals
+        ]
+        st.dataframe(rows, width='stretch')
+
+    st.divider()
+    st.subheader("Overdue closure")
+    st.caption("Managers who are well past the point they could have closed and haven't.")
+    overdue_closure = services.scope.list_overdue_closure(viewer)
+    if not overdue_closure:
+        st.write("Nothing overdue.")
+    else:
+        rows = [
+            {
+                "Agent": safe_get_name(services.party_repo, a.agent_id),
+                "Manager": safe_get_name(services.party_repo, a.manager_id),
+                "Start": a.start_date,
+            }
+            for a in overdue_closure
+        ]
+        st.dataframe(rows, width='stretch')
+
     st.caption(
-        "Notification dispatch (block 7) isn't built yet — this is the "
-        "query a reminder job would poll."
+        "Notification dispatch (block 7) isn't built yet — these are the "
+        "queries a reminder job would poll."
     )
+
+
+def _manager_handoff(services, viewer: Viewer) -> None:
+    st.caption(
+        "For when a Manager leaves: close every one of their active "
+        "Assignments (no score — this isn't a performance assessment) "
+        "and hand each Agent to a new Manager in one action."
+    )
+    managers = services.party_repo.list_by_type("manager")
+    if len(managers) < 2:
+        st.info("Need at least two Managers for a handoff.")
+        return
+
+    manager_labels = disambiguate_labels(managers)
+    with st.form("manager_handoff"):
+        departing_label = st.selectbox("Departing manager", list(manager_labels.keys()))
+        remaining = {
+            label: p
+            for label, p in manager_labels.items()
+            if p.id != manager_labels[departing_label].id
+        }
+        new_label = st.selectbox("New manager for their team", list(remaining.keys()))
+        notes = st.text_area("Notes (optional)")
+        submitted = st.form_submit_button("Reassign their whole team")
+
+    if submitted:
+        departing = manager_labels[departing_label]
+        active_count = len(
+            [a for a in services.scope.list_visible_assignments(viewer) if a.manager_id == departing.id and a.state.value == "active"]
+        )
+        if active_count == 0:
+            st.info(f"{departing.display_name} has no active Agents to reassign.")
+        else:
+            new_assignments = services.scope.reassign_all_from_departing_manager(
+                viewer, departing.id, remaining[new_label].id, notes=notes or None
+            )
+            st.success(f"Reassigned {len(new_assignments)} Agent(s).")
+            st.rerun()
 
 
 def _consolidated_scores(services, viewer: Viewer) -> None:
@@ -181,7 +262,7 @@ def _consolidated_scores(services, viewer: Viewer) -> None:
     if not agents:
         st.write("No agents yet.")
         return
-    labels = {party_label(p): p for p in agents}
+    labels = disambiguate_labels(agents)
     choice = st.selectbox("Agent", list(labels.keys()))
     agent = labels[choice]
     score = services.scope.consolidated_score(viewer, agent.id)

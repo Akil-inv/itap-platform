@@ -1,55 +1,61 @@
-"""One-off visual verification script, not part of the app. Drives the
-running Streamlit server with Playwright and saves screenshots of the
-landing page and each role's dashboard for a real look at the org tree
-and journey changes.
+"""One-off visual verification script. Drives the running server with
+Playwright and saves screenshots of the new/changed screens from the
+"fix everything" gap-closing pass.
 """
 import os
 
 from playwright.sync_api import sync_playwright
 
-URL = "http://localhost:8767"
-OUT_DIR = "/tmp/itap_screens"
+URL = "http://localhost:8768"
+OUT_DIR = "/tmp/itap_screens2"
 CHROMIUM = "/opt/pw-browsers/chromium-1194/chrome-linux/chrome"
 
 os.makedirs(OUT_DIR, exist_ok=True)
 
 with sync_playwright() as p:
     browser = p.chromium.launch(executable_path=CHROMIUM)
-    page = browser.new_page(viewport={"width": 1400, "height": 1100})
+    page = browser.new_page(viewport={"width": 1400, "height": 1300})
     page.goto(URL)
-    page.wait_for_timeout(3000)
+    page.wait_for_timeout(2000)
 
     seed_button = page.get_by_role("button", name="Seed demo data")
     if seed_button.count():
         seed_button.click()
-        page.wait_for_timeout(2000)
+        page.wait_for_timeout(1500)
 
-    page.screenshot(path=f"{OUT_DIR}/1_landing.png", full_page=True)
-
-    # Sign in as the Functional Owner
+    # Sign in as Priya
     page.get_by_role("button", name="Priya", exact=True).click()
-    page.wait_for_timeout(2000)
-    page.screenshot(path=f"{OUT_DIR}/2_workforce_overview.png", full_page=True)
-
-    org_tab = page.get_by_role("tab", name="Org Structure")
-    if org_tab.count():
-        org_tab.click()
-        page.wait_for_timeout(2000)
-        page.screenshot(path=f"{OUT_DIR}/3_org_tree.png", full_page=True)
-
-    # Switch to Alex (manager)
-    page.get_by_role("button", name="Switch person").click()
     page.wait_for_timeout(1500)
+
+    page.get_by_role("tab", name="Overdue").click()
+    page.wait_for_timeout(1000)
+    page.screenshot(path=f"{OUT_DIR}/1_overdue.png", full_page=True)
+
+    page.get_by_role("tab", name="Manager Handoff").click()
+    page.wait_for_timeout(1000)
+    page.screenshot(path=f"{OUT_DIR}/2_manager_handoff.png", full_page=True)
+
+    # Try creating a duplicate assignment. Casey/Alex are the default
+    # selectbox values and Casey already has an active assignment with
+    # Alex from the seed data, so submitting with no changes reproduces
+    # the duplicate-pair case.
+    page.get_by_role("tab", name="Onboard & Assign").click()
+    page.wait_for_timeout(1000)
+    form = page.locator('div[data-testid="stForm"]', has_text="Create Assignment")
+    print("Agent default:", form.locator('input[aria-label="Agent"]').input_value())
+    print("Manager default:", form.locator('input[aria-label="Manager"]').input_value())
+    form.get_by_role("button", name="Create Assignment").click()
+    page.wait_for_timeout(1000)
+    page.screenshot(path=f"{OUT_DIR}/3_duplicate_error.png", full_page=True)
+
+    # Switch to Alex (manager) and open Casey's assignment -> Withdraw tab
+    page.get_by_role("button", name="Switch person").click()
+    page.wait_for_timeout(1000)
     page.get_by_role("button", name="Alex", exact=True).click()
-    page.wait_for_timeout(2000)
-    page.screenshot(path=f"{OUT_DIR}/4_my_team.png", full_page=True)
-
-    # Switch to Casey (agent)
-    page.get_by_role("button", name="Switch person").click()
     page.wait_for_timeout(1500)
-    page.get_by_role("button", name="Casey", exact=True).click()
-    page.wait_for_timeout(2000)
-    page.screenshot(path=f"{OUT_DIR}/5_my_journey.png", full_page=True)
+    page.get_by_role("tab", name="Withdraw").first.click()
+    page.wait_for_timeout(1000)
+    page.screenshot(path=f"{OUT_DIR}/4_withdraw_tab.png", full_page=True)
 
     browser.close()
 

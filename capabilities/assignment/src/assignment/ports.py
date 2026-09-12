@@ -20,12 +20,18 @@ class AssignmentRepo(Protocol):
     def update(self, assignment: Assignment) -> None:
         """Persist a state/field change that does not also write a child
         record (e.g. an extension). For closure, use close_with_record —
-        that write spans two tables and must be atomic."""
+        that write spans two tables and must be atomic.
+
+        Optimistic concurrency: `assignment.version` must match the
+        version currently stored, or this must raise
+        ConcurrentModification without writing anything. Implementations
+        persist the incremented version on success."""
         ...
 
     def close_with_record(self, assignment: Assignment, closure: ClosureRecord) -> None:
         """Atomically persist the assignment's CLOSED state and its
-        ClosureRecord in one transaction."""
+        ClosureRecord in one transaction. Same optimistic-concurrency
+        contract as update()."""
         ...
 
     def list_all(self) -> list[Assignment]:
@@ -43,6 +49,16 @@ class AssignmentRepo(Protocol):
         """Assignments still ACTIVE, started more than `older_than_days`
         ago, with no GoalSetting recorded — the feed a reminder job would
         poll."""
+        ...
+
+    def list_active_older_than(
+        self, older_than_days: int, as_of: Optional[date] = None
+    ) -> list[Assignment]:
+        """Every Assignment still ACTIVE, started more than
+        `older_than_days` ago — regardless of goal-setting status. Used
+        to build "overdue closure" (a Manager who never got around to
+        scoring someone) on top of, with a larger threshold than the
+        goal-setting reminder."""
         ...
 
     def add_goal_setting(self, goal_setting: GoalSetting) -> None: ...

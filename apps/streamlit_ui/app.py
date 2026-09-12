@@ -16,6 +16,7 @@ the persistent header's identity chip, not as the page's identity.
 """
 from __future__ import annotations
 
+import os
 from datetime import date
 from uuid import UUID
 
@@ -78,13 +79,31 @@ if viewer_party_id is None:
     home.render(services)
     st.stop()
 
+# DEV_MODE gates identity switching. Default true (this whole picker is
+# a stand-in for real auth, per the docstring above) — but a misconfigured
+# "production-ish" deployment can set ITAP_DEV_MODE=false, which at least
+# removes the one-click "become anyone" affordance until real auth exists.
+# This is a safety valve, not a security boundary: it doesn't protect
+# the underlying service calls, which have no auth of their own yet.
+DEV_MODE = os.environ.get("ITAP_DEV_MODE", "true").lower() not in ("false", "0", "no")
+
 try:
     current_party = party_repo.get(UUID(viewer_party_id))
 except Exception:
     del st.session_state["viewer_party_id"]
     st.rerun()
 
-viewer = Viewer(party_id=current_party.id, role=Role(current_party.party_type))
+try:
+    viewer = Viewer(party_id=current_party.id, role=Role(current_party.party_type))
+except ValueError:
+    st.error(
+        f"'{current_party.display_name}' has an unrecognized role "
+        f"({current_party.party_type!r}) and can't be signed in."
+    )
+    if DEV_MODE and st.button("Switch person"):
+        del st.session_state["viewer_party_id"]
+        st.rerun()
+    st.stop()
 
 header_left, header_right = st.columns([5, 1])
 with header_left:
@@ -95,7 +114,7 @@ with header_left:
         unsafe_allow_html=True,
     )
 with header_right:
-    if st.button("Switch person", width='stretch'):
+    if DEV_MODE and st.button("Switch person", width='stretch'):
         del st.session_state["viewer_party_id"]
         st.rerun()
 
