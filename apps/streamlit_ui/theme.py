@@ -227,8 +227,8 @@ div[data-testid="stMetric"] {
     align-items: center;
     gap: 2px;
     flex-wrap: wrap;
-    background: var(--itap-neutral-100);
-    border: 1px solid var(--itap-neutral-150);
+    background: var(--itap-neutral-150);
+    border: 1px solid var(--itap-neutral-300);
     border-radius: var(--itap-radius-pill);
     padding: 3px;
     box-shadow: var(--itap-shadow-recessed);
@@ -308,6 +308,14 @@ div[class*="st-key-person_row_"] .stButton > button {
     justify-content: flex-start;
     width: 100%;
     border-radius: var(--itap-radius-sm);
+}
+/* Streamlit wraps the button label in its own inner flex container that
+   centers itself regardless of the button's own justify-content — that
+   inner wrapper has to be told to left-align too, or the outer rule above
+   has no visible effect. */
+div[class*="st-key-person_row_"] .stButton > button > div {
+    justify-content: flex-start;
+    width: 100%;
 }
 div[class*="st-key-person_row_"] .stButton > button:hover:not(:disabled) {
     color: var(--itap-color-primary);
