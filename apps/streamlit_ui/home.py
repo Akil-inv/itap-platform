@@ -145,38 +145,27 @@ def render(services) -> None:
                     "ITAP Admin, then sign in as them and use Bulk Setup for "
                     "everyone else."
                 )
-                col0, col1, col2 = st.columns(3)
-                with col0:
-                    with st.form("home_new_admin"):
-                        name = st.text_input("Admin name", key="home_admin_name")
-                        email = st.text_input("Email (optional)", key="home_admin_email")
-                        if st.form_submit_button("Create ITAP Admin") and name:
-                            attrs = {"email": email} if email else {}
-                            services.party_repo.add(
-                                Party(
-                                    party_type="functional_owner",
-                                    display_name=name,
-                                    attributes=attrs,
-                                )
+                role_choice = st.radio(
+                    "Role",
+                    ["ITAP Admin", "Associate", "Manager"],
+                    horizontal=True,
+                    key="home_new_person_role",
+                )
+                role_to_party_type = {
+                    "ITAP Admin": "functional_owner",
+                    "Associate": "agent",
+                    "Manager": "manager",
+                }
+                with st.form("home_new_person"):
+                    name = st.text_input("Name", key="home_new_person_name")
+                    email = st.text_input("Email (optional)", key="home_new_person_email")
+                    if st.form_submit_button(f"Create {role_choice}") and name:
+                        attrs = {"email": email} if email else {}
+                        services.party_repo.add(
+                            Party(
+                                party_type=role_to_party_type[role_choice],
+                                display_name=name,
+                                attributes=attrs,
                             )
-                            st.rerun()
-                with col1:
-                    with st.form("home_new_agent"):
-                        name = st.text_input("Associate name")
-                        email = st.text_input("Email (optional)", key="home_agent_email")
-                        if st.form_submit_button("Create Associate") and name:
-                            attrs = {"email": email} if email else {}
-                            services.party_repo.add(
-                                Party(party_type="agent", display_name=name, attributes=attrs)
-                            )
-                            st.rerun()
-                with col2:
-                    with st.form("home_new_manager"):
-                        name = st.text_input("Manager name", key="home_manager_name")
-                        email = st.text_input("Email (optional)", key="home_manager_email")
-                        if st.form_submit_button("Create Manager") and name:
-                            attrs = {"email": email} if email else {}
-                            services.party_repo.add(
-                                Party(party_type="manager", display_name=name, attributes=attrs)
-                            )
-                            st.rerun()
+                        )
+                        st.rerun()
