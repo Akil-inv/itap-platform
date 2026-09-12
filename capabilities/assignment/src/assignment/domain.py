@@ -22,6 +22,35 @@ class AssignmentState(str, Enum):
     CLOSED = "closed"
 
 
+class AssignmentKind(str, Enum):
+    """Same underlying record, three display names depending on whose
+    screen it's on (Associate: Episode, Manager: Engagement, Admin:
+    Assignment — see docs/associate_journey_redesign.md). `kind` is what
+    actually varies:
+
+    - PRIMARY: the Agent's main team assignment. Per the spec, exactly
+      one should be active at a time — this data-model layer stores the
+      value but does not itself enforce that invariant (see
+      AssignmentService.create_assignment for why).
+    - SECONDARY: a real, concurrent assignment under a *different*
+      Manager while a Primary is also active — this is what the existing
+      cross-team bifurcation capability produces going forward. Same
+      shape as a Primary: own manager, dates, goals, score.
+    - CCA: an extra-curricular activity (organizing a brownbag, a
+      hackathon, ...), event-based, tagged to whichever manager/organizer
+      scores it. Can occur alongside an active Primary or during an
+      Available/Unassigned gap between Primary stages.
+
+    Defaults to PRIMARY so every Assignment created before this field
+    existed (and every call site that doesn't care) keeps its original
+    meaning.
+    """
+
+    PRIMARY = "primary"
+    SECONDARY = "secondary"
+    CCA = "cca"
+
+
 # closed_reason values:
 #   "completed"        - normal tenure completion, scored via ClosureRecord
 #   "withdrawn"         - Agent left early; no score, see closure_note
@@ -32,8 +61,9 @@ CLOSED_REASONS = {"completed", "withdrawn", "manager_departed"}
 @dataclass
 class Assignment:
     """An Agent placed under a Manager for a period. One Agent may hold
-    multiple concurrent Assignments (cross-team bifurcation) — each is an
-    independent record scored only by its own Manager.
+    multiple concurrent Assignments — one Primary plus any number of
+    Secondary/CCA (cross-team bifurcation is the Secondary case) — each
+    an independent record scored only by its own Manager/organizer.
 
     `version` is used for optimistic concurrency: every persisted update
     must supply the version it read, and adapters must reject (raise
@@ -47,6 +77,7 @@ class Assignment:
     id: UUID = field(default_factory=uuid4)
     end_date: Optional[date] = None
     state: AssignmentState = AssignmentState.ACTIVE
+    kind: AssignmentKind = AssignmentKind.PRIMARY
     closed_reason: Optional[str] = None
     closure_note: Optional[str] = None
     version: int = 0

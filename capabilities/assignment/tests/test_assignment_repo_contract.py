@@ -5,6 +5,7 @@ import pytest
 
 from assignment.domain import (
     Assignment,
+    AssignmentKind,
     AssignmentNotFound,
     AssignmentState,
     ClosureRecord,
@@ -34,6 +35,23 @@ def test_add_and_get_round_trips(assignment_repo):
     assert fetched.agent_id == assignment.agent_id
     assert fetched.manager_id == assignment.manager_id
     assert fetched.state == AssignmentState.ACTIVE
+
+
+def test_add_and_get_defaults_kind_to_primary(assignment_repo):
+    assignment = _make_assignment()
+    assignment_repo.add(assignment)
+
+    assert assignment_repo.get(assignment.id).kind == AssignmentKind.PRIMARY
+
+
+def test_kind_round_trips_for_secondary_and_cca(assignment_repo):
+    secondary = _make_assignment(kind=AssignmentKind.SECONDARY)
+    cca = _make_assignment(kind=AssignmentKind.CCA)
+    assignment_repo.add(secondary)
+    assignment_repo.add(cca)
+
+    assert assignment_repo.get(secondary.id).kind == AssignmentKind.SECONDARY
+    assert assignment_repo.get(cca.id).kind == AssignmentKind.CCA
 
 
 def test_get_missing_raises(assignment_repo):

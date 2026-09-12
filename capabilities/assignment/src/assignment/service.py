@@ -11,6 +11,7 @@ from uuid import UUID
 from .clock import today
 from .domain import (
     Assignment,
+    AssignmentKind,
     ClosureRecord,
     DuplicateAssignment,
     GoalSetting,
@@ -33,7 +34,16 @@ class AssignmentService:
         manager_id: UUID,
         start_date: date,
         end_date: Optional[date] = None,
+        kind: AssignmentKind = AssignmentKind.PRIMARY,
     ) -> Assignment:
+        # Only same Agent/Manager-pair duplication is rejected here — the
+        # "exactly one active Primary" rule from the redesign spec
+        # (docs/associate_journey_redesign.md) is enforced by whichever
+        # UI action creates a Primary (it's the one place that knows
+        # whether the caller means a rotation move or a genuine
+        # Secondary); this data-model layer stays permissive so the
+        # long-standing cross-team bifurcation case (same Agent, two
+        # concurrent Managers) keeps working exactly as before.
         existing = self._repo.list_by_agent(agent_id)
         for a in existing:
             if a.manager_id == manager_id and a.state.value == "active":
@@ -44,6 +54,7 @@ class AssignmentService:
             manager_id=manager_id,
             start_date=start_date,
             end_date=end_date,
+            kind=kind,
         )
         self._repo.add(assignment)
         return assignment
@@ -137,6 +148,7 @@ class AssignmentService:
                     agent_id=assignment.agent_id,
                     manager_id=new_manager_id,
                     start_date=start,
+                    kind=assignment.kind,
                 )
             )
         return new_assignments

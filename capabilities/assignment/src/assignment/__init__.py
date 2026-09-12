@@ -1,5 +1,6 @@
 from .domain import (
     Assignment,
+    AssignmentKind,
     AssignmentNotFound,
     AssignmentState,
     ClosureRecord,
@@ -14,6 +15,7 @@ from .service import AssignmentService
 
 __all__ = [
     "Assignment",
+    "AssignmentKind",
     "AssignmentNotFound",
     "AssignmentState",
     "ClosureRecord",

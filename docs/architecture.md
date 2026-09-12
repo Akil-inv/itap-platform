@@ -167,6 +167,38 @@ runnable against Postgres with an in-process rule adapter).
    `reassign_all_from_departing_manager` is a genuinely different case
    (no score — it's not a performance moment) and is
    Functional-Owner-only via RBAC.
+
+   **`kind` (2026-09-12, associate-journey redesign, Phase 1):** `Assignment`
+   gained `kind: AssignmentKind` (`PRIMARY` / `SECONDARY` / `CCA`), per
+   `docs/associate_journey_redesign.md`'s "Episode / Engagement /
+   Assignment" section — the same record, three names depending on whose
+   screen it's on (Associate: Episode, Manager: Engagement, Admin:
+   Assignment), and one of three kinds regardless of the label. Defaults
+   to `PRIMARY` for backward compatibility, so every existing call site
+   and every Assignment created before this field existed keeps its
+   original meaning unchanged. The existing cross-team bifurcation
+   capability (same Agent, concurrent Assignments under different
+   Managers) is the Secondary case going forward — `test_assignment_service.
+   py::test_cross_team_bifurcation_each_assignment_independent` now
+   creates its two assignments as PRIMARY + SECONDARY to say so
+   explicitly, though the underlying mechanics (independent records,
+   independent scoring) are unchanged.
+
+   **Judgment call:** the spec states "exactly one Primary is active at a
+   time," which reads like a rule this layer should enforce. It
+   deliberately isn't enforced here: several already-passing tests
+   (`test_list_overdue_goal_setting_reflects_reminder_need`,
+   `test_reassign_all_from_departing_manager`, and bifurcation itself)
+   create the same Agent under two Managers via the plain
+   `create_assignment(...)` call with no `kind` argument, i.e. two
+   PRIMARYs by default — exactly the case a hard guard would reject. This
+   is Phase 1 (data-model only, per the redesign's own sequencing); the
+   actual one-Primary invariant is a UI/workflow concern (which action
+   the associate/manager/admin took — "start a new Primary" vs. "add a
+   Secondary" — not something inferable from the data alone), and
+   belongs in whichever later phase wires the "add a Secondary" /
+   "advance to next Primary stage" actions described in the spec's
+   "Associate portfolio" section. Revisit then.
 3. **RBAC Scope** — done, as `capabilities/rbac_scope/`.
    `ScopedAssignmentQueries` computes visibility from the Viewer's
    relationship to each Assignment (manager_id/agent_id match), not from
@@ -456,6 +488,70 @@ a SQLite file with the pre-`criteria`/pre-`version` schema and confirming
 `create_schema()` + a live query both succeed against it; full test
 suites (`party_identity` 13, `assignment` 59, `rbac_scope` 13) plus
 `smoke_test.py` and `test_bulk_import.py` all still pass.
+
+### Catalog capability (2026-09-12, associate-journey redesign, Phase 1)
+
+New `capabilities/catalog/`: the Setup/Configuration data the redesign
+spec (`docs/associate_journey_redesign.md`) calls for — Skills, Teams,
+and CCA-activity catalogs (admin-maintained master data, seeded from
+Excel, addable via the app) — plus the small associate-declared records
+that go with them in the spec's "Associate flow": self-declared/
+engagement-sourced skills, the associate's own lean profile (bio,
+experience, project highlights, photo), standing interest flags in
+Teams/CCAs, and informational annual leave. Same hexagonal shape as
+every other block (`ports.py`, `adapters/{in_memory,sql}.py`,
+`service.py`, contract tests parametrized over both adapters). 69 tests
+passing.
+
+**Where this lives, and why:** none of this belongs inside `assignment`
+— it has a different rate of change (admin/associate direct edits, no
+rule engine, no guarded state machine, no workflow) and a different
+"single reason to change" (Setup master data and self-service profile
+data change for reasons entirely unrelated to why an Assignment
+transitions). It also doesn't belong in `party_identity`, which is
+still the one block meant to stay domain-agnostic (see the "Decision"
+note above — `assignment` is the *accepted* exception, not a precedent
+to extend); shoving ITAP-specific concepts like "annual leave" or a
+"CCA activity" into Party's generic `attributes` dict would work
+mechanically but would be exactly the kind of vocabulary leak block 1's
+own README warns against. `catalog/` is a new, small, still
+domain-specific block (matching the project's current "don't chase
+genericity yet" decision) purpose-built for this one cohesive group of
+admin/associate-declared data. Like `rotation_plan`, it never imports
+`assignment` or `party_identity` — Agent/Manager ids are opaque UUIDs
+here, resolved to names by whichever app-layer code already talks to
+all of them.
+
+**Judgment call — one capability, not several:** Skills/Teams/CCA
+catalogs (admin Setup, low churn) and the associate-declared records
+(interest flags, leave, profile, self-declared skills — higher churn,
+associate-editable) are arguably two different bounded concerns by the
+architecture's own "different rate of change" heuristic. They were kept
+in one small package rather than split into two near-empty capabilities:
+the associate-declared records either directly reference a catalog
+entry by id (an `InterestFlag`'s `target_id` is a `Team`/`CcaActivity`
+id) or are trivial single-entity records (`AnnualLeave`) that don't
+justify a whole new package on their own. If either side grows
+materially (e.g. leave gains its own approval workflow later, despite
+the spec currently ruling that out), split it out then — this is
+explicitly a "don't over-engineer for a need that doesn't exist yet"
+call, not a permanent stance.
+
+**`InterestActivity`** is the `raised_at`/`seen_at` pair the admin's
+associate list needs to compute the "interest changed" highlight badge
+(`CatalogService.has_unseen_interest_change`): `raised_at` moves forward
+on every flag/unflag, `seen_at` moves forward when the admin opens that
+Associate's profile (`mark_interest_seen`) — the exact "flag changes it,
+opening the profile clears it" pattern the spec describes, without a
+history log per change (the spec only asks for a boolean-ish highlight,
+not an audit trail).
+
+**Not built in this pass (deliberately, per the task's Phase 1 scope):**
+no Streamlit views wire these catalogs up yet (Setup screens, the
+associate's profile editor, the admin list's highlight badge rendering)
+— that is explicitly later-phase UI work. `bulk_import.py`'s Excel
+parsing is also untouched; teaching it to seed Skills/Teams/CCA rows
+from the workbook is a separate, later pass per the task's instructions.
 
 ### Resolved via scenario-based gap analysis (2026-09-12)
 

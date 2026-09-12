@@ -44,6 +44,7 @@ from sqlalchemy import (
 from ..clock import today
 from ..domain import (
     Assignment,
+    AssignmentKind,
     AssignmentNotFound,
     AssignmentState,
     ClosureRecord,
@@ -63,6 +64,7 @@ assignments_table = Table(
     Column("start_date", Date, nullable=False),
     Column("end_date", Date, nullable=True),
     Column("state", String(32), nullable=False),
+    Column("kind", String(16), nullable=False),
     Column("closed_reason", String(32), nullable=True),
     Column("closure_note", Text, nullable=True),
     Column("version", Integer, nullable=False),
@@ -136,7 +138,9 @@ def create_schema(engine: Engine) -> None:
             reverse_feedback_table,
         ],
     )
-    _ensure_columns(engine, assignments_table, backfill={"version": 0})
+    _ensure_columns(
+        engine, assignments_table, backfill={"version": 0, "kind": AssignmentKind.PRIMARY.value}
+    )
     _ensure_columns(engine, goal_settings_table, backfill={"criteria": []})
 
 
@@ -335,6 +339,7 @@ def _assignment_values(
         "start_date": assignment.start_date,
         "end_date": assignment.end_date,
         "state": assignment.state.value,
+        "kind": assignment.kind.value,
         "closed_reason": assignment.closed_reason,
         "closure_note": assignment.closure_note,
         "version": assignment.version + 1 if bump_version else assignment.version,
@@ -353,6 +358,7 @@ def _row_to_assignment(row) -> Assignment:
         start_date=row["start_date"],
         end_date=row["end_date"],
         state=AssignmentState(row["state"]),
+        kind=AssignmentKind(row["kind"]),
         closed_reason=row["closed_reason"],
         closure_note=row["closure_note"],
         version=row["version"],

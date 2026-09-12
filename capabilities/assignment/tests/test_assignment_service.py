@@ -5,6 +5,7 @@ import pytest
 
 from assignment.adapters.in_memory import InMemoryAssignmentRepo
 from assignment.domain import (
+    AssignmentKind,
     AssignmentState,
     ClosureRecord,
     ConcurrentModification,
@@ -244,16 +245,26 @@ def test_reassign_skips_already_closed_assignments(service):
 
 
 def test_cross_team_bifurcation_each_assignment_independent(service):
+    # Per docs/associate_journey_redesign.md, this is now the Primary +
+    # Secondary case: manager_a's is the Agent's main (Primary)
+    # assignment, manager_b's is a genuinely concurrent Secondary under a
+    # different manager — same independence guarantee as before.
     agent_id = uuid4()
     manager_a, manager_b = uuid4(), uuid4()
-    assignment_a = service.create_assignment(agent_id, manager_a, date(2026, 1, 1))
-    assignment_b = service.create_assignment(agent_id, manager_b, date(2026, 1, 1))
+    assignment_a = service.create_assignment(
+        agent_id, manager_a, date(2026, 1, 1), kind=AssignmentKind.PRIMARY
+    )
+    assignment_b = service.create_assignment(
+        agent_id, manager_b, date(2026, 1, 1), kind=AssignmentKind.SECONDARY
+    )
 
     # manager_b closing their assignment must not affect manager_a's
     _close(service, assignment_b.id, score=3.5, notes="Fine")
 
     assert service._repo.get(assignment_a.id).state == AssignmentState.ACTIVE
+    assert service._repo.get(assignment_a.id).kind == AssignmentKind.PRIMARY
     assert service._repo.get(assignment_b.id).state == AssignmentState.CLOSED
+    assert service._repo.get(assignment_b.id).kind == AssignmentKind.SECONDARY
 
 
 def test_reverse_feedback_denied_before_minimum_elapsed_period(service):
