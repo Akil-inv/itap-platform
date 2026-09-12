@@ -117,6 +117,7 @@ def _render_rows(services, agent_ids: list, empty_message: str) -> None:
     for agent in agents:
         all_assignments = services.assignment_repo.list_by_agent(agent.id)
         battery_html = render_battery_html(all_assignments)
+        profile = services.catalog_service.get_profile(agent.id)
         # Deliberately no score column here — see this module's
         # docstring: managers never see the aggregate score, not even
         # hidden behind a reveal. One coherent card — avatar, name,
@@ -125,6 +126,7 @@ def _render_rows(services, agent_ids: list, empty_message: str) -> None:
         clicked, _extra_cols = render_person_row(
             key=f"manager_{agent.id}",
             display_name=agent.display_name,
+            photo_url=profile.photo_url if profile else None,
             battery_html=battery_html,
         )
         if clicked:

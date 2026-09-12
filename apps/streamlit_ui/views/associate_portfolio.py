@@ -69,16 +69,23 @@ def _profile_section(services, agent, profile) -> None:
     )
     with st.form(f"profile_{agent.id}"):
         bio = st.text_area("Bio", value=profile.bio if profile else "")
-        photo_url = st.text_input(
-            "Photo URL (optional)", value=(profile.photo_url if profile else "") or ""
+        uploaded_photo = st.file_uploader(
+            "Update photo", type=["png", "jpg", "jpeg", "gif", "webp"]
         )
         if st.form_submit_button("Save profile"):
             from catalog.domain import AssociateProfile
 
+            import photo_storage
+
+            photo_url = profile.photo_url if profile else None
+            if uploaded_photo is not None:
+                photo_url = photo_storage.save_photo(
+                    agent.id, uploaded_photo.name, uploaded_photo.getvalue()
+                )
             updated = AssociateProfile(
                 agent_id=agent.id,
                 bio=bio,
-                photo_url=photo_url or None,
+                photo_url=photo_url,
                 experience=list(profile.experience) if profile else [],
                 project_highlights=list(profile.project_highlights) if profile else [],
             )

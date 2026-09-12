@@ -33,10 +33,39 @@ avatar/name/meter layout.
 """
 from __future__ import annotations
 
+import base64
 import html
+from pathlib import Path
 from typing import Optional
 
 import streamlit as st
+
+_MIME_BY_SUFFIX = {
+    ".jpg": "jpeg", ".jpeg": "jpeg", ".png": "png", ".gif": "gif", ".webp": "webp",
+}
+
+
+def _photo_src(photo_url: str) -> Optional[str]:
+    """`photo_url` is either a real URL (an http(s) link, or a browser-
+    ready `data:` URI already) or a local filesystem path — what
+    `photo_storage.save_photo` returns, since there's no blob-storage
+    adapter in this codebase (see photo_storage.py's own docstring). A
+    raw local path in an `<img src>` never resolves in the browser (it's
+    not a route Streamlit serves), so a local file gets read and inlined
+    as a base64 data URI instead. Returns None if a local path doesn't
+    exist or can't be read, so the caller falls back to initials rather
+    than rendering a broken image."""
+    if photo_url.startswith(("http://", "https://", "data:")):
+        return photo_url
+    path = Path(photo_url)
+    if not path.is_file():
+        return None
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return None
+    mime = _MIME_BY_SUFFIX.get(path.suffix.lower(), "jpeg")
+    return f"data:image/{mime};base64,{base64.b64encode(data).decode()}"
 
 
 def avatar_html(display_name: str, photo_url: Optional[str] = None, large: bool = False) -> str:
@@ -45,8 +74,9 @@ def avatar_html(display_name: str, photo_url: Optional[str] = None, large: bool 
     `views/manager_associate.py`, `views/agent.py`) — one implementation
     instead of three copies of the same inline `<div style=...>`."""
     css_class = "itap-avatar itap-avatar--lg" if large else "itap-avatar"
-    if photo_url:
-        return f'<div class="{css_class}"><img src="{html.escape(photo_url)}" alt=""></div>'
+    src = _photo_src(photo_url) if photo_url else None
+    if src:
+        return f'<div class="{css_class}"><img src="{html.escape(src)}" alt=""></div>'
     initial = html.escape(display_name[:1].upper()) if display_name else "?"
     return f'<div class="{css_class}">{initial}</div>'
 

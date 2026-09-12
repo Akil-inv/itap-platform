@@ -54,6 +54,7 @@ from party_identity.domain import Party
 from rbac_scope import Viewer
 
 import journey_curve
+import photo_storage
 from journey import render_stepper, stage_index
 from party_helpers import safe_get_name
 from person_row import avatar_html
@@ -100,14 +101,19 @@ def _profile_tab(services, current_party: Party) -> None:
 
     with st.form("agent_profile_form"):
         bio = st.text_area("Bio", value=profile.bio if profile else "")
-        photo_url = st.text_input(
-            "Photo URL", value=(profile.photo_url if profile else "") or ""
+        uploaded_photo = st.file_uploader(
+            "Update photo", type=["png", "jpg", "jpeg", "gif", "webp"]
         )
         if st.form_submit_button("Save profile"):
+            photo_url = profile.photo_url if profile else None
+            if uploaded_photo is not None:
+                photo_url = photo_storage.save_photo(
+                    current_party.id, uploaded_photo.name, uploaded_photo.getvalue()
+                )
             updated = AssociateProfile(
                 agent_id=current_party.id,
                 bio=bio,
-                photo_url=photo_url or None,
+                photo_url=photo_url,
                 experience=list(profile.experience) if profile else [],
                 project_highlights=list(profile.project_highlights) if profile else [],
             )

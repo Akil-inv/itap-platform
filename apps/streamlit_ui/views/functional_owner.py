@@ -125,9 +125,11 @@ def _associates_list(services, viewer: Viewer) -> None:
     for agent, all_assignments, status in rows:
         highlighted = services.catalog_service.has_unseen_interest_change(agent.id)
         battery_html = render_battery_html(all_assignments)
+        profile = services.catalog_service.get_profile(agent.id)
         clicked, extra_cols = render_person_row(
             key=f"assoc_{agent.id}",
             display_name=agent.display_name,
+            photo_url=profile.photo_url if profile else None,
             sub_label=f"Current team: {current_team_label(services, all_assignments)}",
             battery_html=battery_html,
             extra_col_weights=[1.6, 0.8],
