@@ -21,8 +21,8 @@ Three tabs, matching the approved mockup's structure exactly:
   (no approval) plus the two new gated **Request Extension** / **Request
   Closure** actions (`AssignmentService.request_change` — creates a
   PENDING `ChangeRequest`, does not itself extend or close anything; the
-  admin-approval screen that acts on these is explicitly out of scope
-  for this pass, see docs/architecture.md's Phase 3 section).
+  admin-approval screen that acts on these was added in Phase 4, see
+  `views/approvals.py`).
 
 **"Current engagement" — judgment call**: the spec's mockup shows one
 Goals/Review & Scoring tab per Associate page, but the domain allows a
@@ -342,9 +342,7 @@ def _review_scoring_section(services, viewer, assignment) -> None:
     st.subheader("Request Extension or Closure")
     st.caption(
         "Unlike Withdraw, these are **requests** — an admin must approve "
-        "before anything changes. The admin-approval screen is not built "
-        "yet (see docs/architecture.md's Phase 3 section); this is the "
-        "request-creation half only."
+        "before anything changes, from the Functional Owner's Approvals tab."
     )
     req_cols = st.columns(2)
     with req_cols[0]:
