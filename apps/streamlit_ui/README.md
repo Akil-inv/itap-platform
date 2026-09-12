@@ -37,6 +37,10 @@ underlying service calls still have no auth of their own).
 
 ## Bulk Setup (`bulk_import.py`)
 
+See `docs/upload_inventory.md` for the full column-by-column inventory —
+which sheet/column becomes which field, and where each one shows up in
+the app. This section is the short version.
+
 Functional Owner's "Bulk Setup" tab: upload an Excel workbook to create
 ITAP Admins, Associates, Managers, and Assignments (with optional goals +
 scoring criteria) in one pass, instead of one form submission per row. A
