@@ -45,26 +45,19 @@ silently create garbage: nothing is written until you've seen the
 preview and clicked Confirm.
 
 **Template** (`Download template (.xlsx)` button, generated on the fly,
-no bundled file to keep in sync):
-- `Admins` / `Associates`: `name` (required), `email` (optional)
-- `Managers`: `name` (required), `email` (optional), `function`
-  (optional free-text grouping label, e.g. "Engineering" — stored as
-  `Party.attributes["function"]`; nothing else in the app reads it yet)
-- `Assignments`: `associate_name`, `manager_name`, `start_date` (required);
-  `end_date`, `goals`, `criteria` (optional). `criteria` is
-  semicolon-separated (e.g. `Communication; Technical Skill; Ownership`)
-  — matches `GoalSetting.criteria`, the lightweight scoring-rubric
-  checklist (see `capabilities/assignment`).
-- `Criteria Library`: `name`, `description` — a reference sheet only,
-  not validated against; documents what a criterion means without
-  forcing every row to repeat it.
+no bundled file to keep in sync) — see "Client deployment & setup data
+model" below for the full, current (Phase 5) schema: `Admins`,
+`Managers` (+ `team_name`), `Associates` (+ profile/skills/interests),
+`Skills` (renamed from `Criteria Library`, now a live catalog), `CCA
+Activities` (new), and `Assignments` (+ `kind`, + `status`/
+`objective_score`/`subjective_notes` for an already-finished stint).
 
-**Idempotent re-upload**: Associates/Managers are matched against existing
-Parties by email first, then by exact name if unambiguous — re-uploading
-the same workbook (e.g. after adding a new row) reuses existing people
-instead of creating duplicates, and a row that would duplicate an active
-Assignment is skipped with a clear message rather than erroring the
-whole batch. Covered by `test_bulk_import.py`.
+**Upsert re-upload (Phase 5 — a real behavior change from the original
+"skip only" design)**: every row matches an existing record by its
+natural key and **updates** it to whatever the file now says, rather
+than only matching-and-reusing people and skipping a duplicate
+Assignment — see "Client deployment & setup data model" below for the
+exact rule per sheet. Covered by `test_bulk_import.py`.
 
 **A real bug this surfaced, worth knowing about:** all tabs render in
 one Streamlit script pass, in a fixed left-to-right order. Org
@@ -280,6 +273,85 @@ items the spec itself lists as "Explicitly deferred / out of scope"
 (email deep-linking, resume file storage, exact battery-bar rendering
 past 2 years) remain unbuilt, by design.
 
+## Client deployment & setup data model (Phase 5 of the redesign)
+
+Per `docs/associate_journey_redesign.md`'s "Client deployment & setup
+data model" section: the app now starts genuinely empty on a fresh
+deployment and everything — including a full year of rotation history
+for a demo — comes in through the Bulk Setup screen, the same path a
+real client's data goes through. There is no more "Seed demo data"
+button.
+
+**Extended Setup Workbook** (`bulk_import.py`, `Download template
+(.xlsx)` on the Bulk Setup tab):
+- `Managers` gained `team_name` — seeds the Teams catalog directly.
+- `Associates` gained `photo_filename`, `bio`, `experience_summary`,
+  `project_highlights`, `skills` (semicolon-separated, self-declared),
+  `interested_teams`, `interested_ccas` (semicolon-separated).
+- `Criteria Library` was renamed **`Skills`** and now feeds the *live*
+  Skills catalog, not a reference-only sheet.
+- New **`CCA Activities`** sheet (`name`, `organizer_name`,
+  `organizer_email`, `status`).
+- `Assignments` gained `kind` (primary/secondary/cca, default primary)
+  and, for an already-finished stint, `status`/`objective_score`/
+  `subjective_notes` — a `status=closed` row is created (or transitioned)
+  already closed and scored, with historical dates, never left open to
+  be closed later.
+
+**This is a real behavior change — upsert, not skip-only.** Every row
+now matches an existing record by its natural key (email for people;
+name for a catalog entry; associate+manager+kind+start_date for one
+assignment stint) and **updates** that record to whatever the file now
+says. Previously a re-upload matched-and-reused people unchanged and
+silently skipped a duplicate Assignment; now editing one cell and
+re-uploading the whole workbook actually changes the live data. Nothing
+is ever duplicated either way. The one thing that still doesn't update
+on a match: a person's `display_name` (the port only merges
+`attributes`, see `bulk_import.py`'s docstring), and an already-CLOSED
+Assignment's score (`ClosureRecord` is append-only by design — correct
+it via the admin's Approvals reopen action, not a re-import).
+
+**`photos.zip`** (optional, alongside the workbook on the Bulk Setup
+tab): each image is matched to an Associate by filename against their
+email or the `photo_filename` column (`bulk_import.
+match_photos_to_associates`), then saved to `$PHOTO_STORAGE_DIR`
+(default `./uploaded_photos`) via `photo_storage.py` — `AssociateProfile.
+photo_url` already just takes a plain string `st.image()` renders, so a
+local path works exactly like a URL did.
+
+**Upload audit log**: every workbook or photos.zip upload is logged
+(`catalog.domain.UploadAudit`/`UploadKind`, in `capabilities/catalog` —
+who, when, what, a created/updated/reused/skipped/error summary, any row
+errors, and the raw file bytes for traceability) and viewable read-only
+in a "Past uploads (audit log)" expander right on the Bulk Setup tab —
+kept there rather than a new tab or folded into Setup, since it's
+history about the action on *this* tab, not admin-editable master data.
+
+**No more "Seed demo data."** `generate_demo_workbook.py` builds a
+demo Setup Workbook on the fly (3 Admins, 6 Managers/Teams, 18
+Associates, a Skills/CCA catalog, and 2-3 closed+scored historical
+Primary stints per Associate before their current one — a full year of
+rotation history) offered as a download on the now-empty welcome
+screen; downloading it and uploading it through Bulk Setup is the *only*
+path to that data, exactly like a real client's file. `home.py` also
+gained a "Create ITAP Admin" form (alongside the existing Associate/
+Manager ones) — without it a brand-new deployment had no way to
+bootstrap its first Admin once the seed button was gone.
+
+**Console reset**: `python reset_db.py` (asks for confirmation, or pass
+`--yes`) drops and recreates every table across `party_identity`,
+`assignment`, `rotation_plan`, and `catalog`, and clears the local photo
+storage directory — for demoing or starting a deployment over.
+
+Covered by the rewritten `test_bulk_import.py` (upsert create-vs-update,
+the historical closed-and-scored import path, `photos.zip` matching) and
+`screenshot_phase5.py` (Playwright, same convention as the other phase
+screenshot scripts). `smoke_test.py`/`test_admin_journey_ui.py`/
+`test_manager_journey_ui.py`/`test_associate_and_approvals_ui.py` now
+seed their fixture via `test_fixtures.seed_basic_demo(services)` directly
+(the app no longer has a seed button to click through) rather than
+changing what they assert against.
+
 ## Running locally
 
 ```bash
@@ -302,10 +374,11 @@ export DATABASE_URL=postgresql://user:pass@host:5432/itap
 `MIN_DAYS_BEFORE_CLOSURE` (default 30) controls the assignment closure
 gate — see `capabilities/assignment/src/assignment/rules_config.py`.
 
-On first run, with no Parties yet, the app offers a "Seed demo data"
-button (1 Functional Owner, 2 Managers, 2 Associates, 3 Assignments — Casey
-is deliberately double-booked to Alex and Bailey, to demo cross-team
-bifurcation) so there is something to click through immediately.
+On first run, with no Parties yet, the app offers a downloadable demo
+Setup Workbook (see "Client deployment & setup data model" above) —
+download it, create the first ITAP Admin, then upload it through Bulk
+Setup to populate a full demo world in one pass, the same path a real
+client's file goes through.
 
 ## Theme and journey (`theme.py`, `journey.py`)
 

@@ -14,6 +14,9 @@ os.environ["DATABASE_URL"] = "sqlite:///./test_associate_and_approvals_ui.db"
 
 from streamlit.testing.v1 import AppTest
 
+import test_fixtures
+from services import get_services
+
 
 def click_button_labeled(at, label):
     matches = [b for b in at.button if b.label == label]
@@ -21,12 +24,13 @@ def click_button_labeled(at, label):
     return matches[0].click().run()
 
 
+# Phase 5 removed app.py's "Seed demo data" button — seed the same
+# fixture directly via the service layer (see test_fixtures.py).
+test_fixtures.seed_basic_demo(get_services())
+
 at = AppTest.from_file("app.py", default_timeout=20)
 at.run()
 assert not at.exception, f"Initial render raised: {at.exception}"
-
-at.button[0].click().run()  # Seed demo data
-assert not at.exception, f"Seeding raised: {at.exception}"
 
 # Give Priya (admin) something to work with: a Team, a CCA activity, and
 # a Skill, via the real Setup forms, before switching to Casey.

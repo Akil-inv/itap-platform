@@ -293,4 +293,90 @@ their own history.
    data-model changes (new `kind` field on assignments, Teams/CCA/Skills
    catalog tables, interest-flag records, profile fields, leave
    records) and migration path from the current role-tab app.
-4. **Build.**
+4. **Build.** (Phases 1–4, all shipped — see `docs/architecture.md`.)
+5. **Client deployment & setup data model** — see below. Not yet built.
+
+## Client deployment & setup data model
+
+Status: agreed, not yet built (this is Phase 5).
+
+The app moves from "seed demo data for a look around" to a real,
+repeatable client onboarding: a fresh deployment starts empty, and the
+admin brings the whole team structure — including a full year of
+rotation history if they want to showcase one — to life by uploading
+documents. No manual per-person onboarding as the primary path, no
+loose profiles floating around that didn't come from the uploaded
+source of truth.
+
+**No actual resume/PDF/Word uploads** — explicitly decided against,
+twice now. Profile depth (bio, experience, project highlights) stays
+lean structured spreadsheet columns, same as the rest of this spec's
+"Skills" and profile sections. Only a photo is a real binary upload,
+because a spreadsheet cell can't hold one.
+
+### Two upload artifacts, not more
+
+1. **The Setup Workbook** (one `.xlsx`, several sheets) — replaces and
+   extends today's Bulk Setup template:
+   - `Admins` — name, email.
+   - `Managers` — name, email, function, **`team_name`** (new — seeds
+     the Teams catalog directly off this sheet; one-team-one-manager
+     for MVP per the "Teams and CCA catalog" section above).
+   - `Associates` — name, email, **`photo_filename`** (references a
+     file in the photos zip below), **`bio`**, **`experience_summary`**,
+     **`project_highlights`**, **`skills`** (semicolon-separated,
+     self-declared), **`interested_teams`**, **`interested_ccas`**
+     (semicolon-separated — the standing-interest signal from the
+     "Associate flow" section, backfillable at setup as well as
+     declared later in-app).
+   - `Skills` — today's `Criteria Library` sheet, renamed, now feeding
+     the live Skills catalog instead of sitting as reference-only.
+   - `CCA Activities` — name, organizer name/email, status
+     (open/closed).
+   - `Assignments` — `associate_name`, `manager_name`, **`kind`**
+     (primary/secondary/cca — new, defaults to primary), `start_date`,
+     `end_date`, `goals`, `criteria`, plus three columns used **only
+     when the stint is already finished**: `status` (active/closed),
+     `objective_score`, `subjective_notes`. One sheet covers both an
+     associate's current, unscored, ongoing stint and a full year of
+     finished, scored history — historical rows just have more columns
+     filled in.
+
+2. **`photos.zip`** (optional) — one image file per associate, named to
+   match their email or the `photo_filename` column. The only reason a
+   second upload exists at all.
+
+### Update semantics — upsert by natural key, always re-upload the whole file
+
+Every row matches an existing record by a natural key (email for
+people; team/skill/CCA name for catalogs; associate + manager + kind +
+start_date for one assignment stint). Re-uploading the workbook is an
+**upsert**: a matched row's fields get updated to whatever the file now
+says, an unmatched row creates a new record, nothing is ever
+duplicated. So fixing one wrong cell means: fix it in the one master
+workbook, re-upload the whole file again — there is no separate
+"delta" file format to learn.
+
+### Upload audit log — history for the setup files themselves
+
+Kept separate from the live data (which stays upserted, one current
+truth, not versioned): every upload — workbook or photo zip — is
+logged with who uploaded it, when, and a result summary (created /
+updated / skipped counts, any row errors), the raw file itself
+retained for traceability. This answers "did we keep history for setup
+files" — yes, as an audit trail of uploads, not as version history of
+the domain data.
+
+### No more "Seed demo data" button
+
+Removed. In its place: the existing sample dataset ships as a
+downloadable demo workbook that goes through the exact same upload
+path as a real client's file — trying the product and using it for
+real are the same code path, never a separate seeding branch. A
+console command (e.g. `python reset_db.py`) wipes a deployment back to
+empty, for demoing or starting over.
+
+The existing single-person onboarding back door (see "Admin flow" /
+"Associates list" above) stays — still useful for one new hire joining
+after go-live — distinct from this bulk, potentially-historical initial
+load.

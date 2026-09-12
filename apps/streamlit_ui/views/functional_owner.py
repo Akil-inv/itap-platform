@@ -12,6 +12,7 @@ import bulk_import
 import journey_curve
 import org_tree
 import rotation_plan_bridge
+from catalog.domain import UploadKind
 from associate_status import AssociateStatus, classify, current_team_label
 from battery import render_html as render_battery_html
 from party_helpers import disambiguate_labels, safe_get_name
@@ -70,7 +71,7 @@ def render(services, viewer: Viewer, current_party: Party) -> None:
     with tabs[5]:
         _rotation_plans(services)
     with tabs[6]:
-        _bulk_setup(services)
+        _bulk_setup(services, current_party)
     with tabs[7]:
         _overdue(services, viewer)
     with tabs[8]:
@@ -564,12 +565,17 @@ def _rotation_plans(services) -> None:
                 st.caption("No one enrolled yet.")
 
 
-def _bulk_setup(services) -> None:
+def _bulk_setup(services, current_party: Party) -> None:
     st.caption(
-        "Upload an Excel workbook to set up Associates, Managers, and "
-        "Assignments — with optional goals and scoring criteria — in one "
-        "pass. Nothing is created until you review the preview and "
-        "confirm."
+        "Upload a Setup Workbook to create or UPDATE Admins, Managers "
+        "(+ Teams), Associates (+ profile/skills/interests), Skills, CCA "
+        "Activities, and Assignments (open or already-finished/scored) — "
+        "in one pass. Re-uploading the same workbook is always safe: each "
+        "row is matched by its natural key (email for people; name for "
+        "catalogs; associate+manager+kind+start_date for one assignment "
+        "stint) and its fields are UPDATED to whatever the file now says — "
+        "nothing is ever duplicated. Nothing is written until you review "
+        "the preview and click Confirm."
     )
 
     # Show the previous import's result (if any) before anything else.
@@ -591,7 +597,14 @@ def _bulk_setup(services) -> None:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
+    with st.expander("Past uploads (audit log)"):
+        _upload_history(services)
+
     uploaded = st.file_uploader("Upload filled-in workbook", type=["xlsx"])
+    photos_zip = st.file_uploader(
+        "Upload photos.zip (optional — matched by email or photo_filename)",
+        type=["zip"],
+    )
     if uploaded is None:
         st.session_state.pop("bulk_import_parsed", None)
         st.session_state.pop("bulk_import_cache_key", None)
@@ -606,6 +619,8 @@ def _bulk_setup(services) -> None:
             return
         st.session_state["bulk_import_cache_key"] = cache_key
         st.session_state["bulk_import_parsed"] = parsed
+        st.session_state["bulk_import_raw_bytes"] = uploaded.getvalue()
+        st.session_state["bulk_import_filename"] = uploaded.name
 
     parsed = st.session_state["bulk_import_parsed"]
 
@@ -619,7 +634,9 @@ def _bulk_setup(services) -> None:
         f"Found **{len(parsed.admins)}** Admin row(s), "
         f"**{len(parsed.associates)}** Associate row(s), "
         f"**{len(parsed.managers)}** Manager row(s), "
-        f"**{len(parsed.assignments)}** Assignment row(s)."
+        f"**{len(parsed.assignments)}** Assignment row(s), "
+        f"**{len(parsed.skills)}** Skill row(s), "
+        f"**{len(parsed.cca_activities)}** CCA Activity row(s)."
     )
     with st.expander("Preview parsed rows", expanded=True):
         if parsed.admins:
@@ -634,11 +651,41 @@ def _bulk_setup(services) -> None:
         if parsed.assignments:
             st.markdown("**Assignments**")
             st.dataframe(parsed.assignments, width='stretch')
+        if parsed.skills:
+            st.markdown("**Skills**")
+            st.dataframe(parsed.skills, width='stretch')
+        if parsed.cca_activities:
+            st.markdown("**CCA Activities**")
+            st.dataframe(parsed.cca_activities, width='stretch')
 
     if st.button("Confirm and import", type="primary"):
-        result = bulk_import.apply_import(services, parsed)
+        photos_bytes = photos_zip.getvalue() if photos_zip is not None else None
+        result = bulk_import.apply_import(services, parsed, photos_zip=photos_bytes)
+        counts = result.counts()
+        errors = [r.message for r in result.row_results if r.status == "error"]
+        services.catalog_service.log_upload(
+            uploaded_by_name=current_party.display_name,
+            kind=UploadKind.WORKBOOK,
+            filename=st.session_state.get("bulk_import_filename", "workbook.xlsx"),
+            raw_file=st.session_state.get("bulk_import_raw_bytes", b""),
+            summary=counts,
+            errors=errors,
+            uploaded_by=current_party.id,
+        )
+        if photos_bytes is not None:
+            services.catalog_service.log_upload(
+                uploaded_by_name=current_party.display_name,
+                kind=UploadKind.PHOTOS,
+                filename=photos_zip.name,
+                raw_file=photos_bytes,
+                summary={"matched": sum(1 for r in result.row_results if "photo saved" in r.message)},
+                errors=[],
+                uploaded_by=current_party.id,
+            )
         st.session_state.pop("bulk_import_parsed", None)
         st.session_state.pop("bulk_import_cache_key", None)
+        st.session_state.pop("bulk_import_raw_bytes", None)
+        st.session_state.pop("bulk_import_filename", None)
         st.session_state["bulk_import_result"] = result
         st.rerun()
 
@@ -651,6 +698,25 @@ def _render_import_result(result) -> None:
             st.error(f"[{r.sheet} row {r.row}] {r.message}")
         elif r.status == "skipped":
             st.warning(f"[{r.sheet} row {r.row}] {r.message}")
+
+
+def _upload_history(services) -> None:
+    """Read-only view over the upload audit log (Phase 5) — kept inside
+    this same Bulk Setup tab rather than Setup: it's history *about* an
+    upload action taken here, not admin-editable master data like
+    Skills/Teams/CCA, so it belongs next to the action it logs."""
+    uploads = services.catalog_service.list_uploads()
+    if not uploads:
+        st.caption("No uploads yet.")
+        return
+    for u in uploads:
+        summary = ", ".join(f"{v} {k}" for k, v in u.summary.items()) or "no summary"
+        st.write(
+            f"**{u.uploaded_at:%Y-%m-%d %H:%M UTC}** — {u.kind.value} `{u.filename}` "
+            f"by {u.uploaded_by_name} — {summary}"
+        )
+        if u.errors:
+            st.caption(f"{len(u.errors)} row error(s) in this upload.")
 
 
 def _consolidated_scores(services, viewer: Viewer) -> None:

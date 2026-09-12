@@ -21,10 +21,9 @@ from datetime import date
 from uuid import UUID
 
 import streamlit as st
-from assignment.domain import AssignmentKind
-from party_identity.domain import Party
 from rbac_scope import Role, Viewer
 
+import generate_demo_workbook
 import home
 import theme
 from services import get_services
@@ -40,26 +39,6 @@ services = get_services()
 party_repo = services.party_repo
 
 
-def _seed_demo_data() -> None:
-    owner = Party(party_type="functional_owner", display_name="Priya")
-    manager_a = Party(party_type="manager", display_name="Alex")
-    manager_b = Party(party_type="manager", display_name="Bailey")
-    agent_a = Party(party_type="agent", display_name="Casey")
-    agent_b = Party(party_type="agent", display_name="Dana")
-
-    for party in (owner, manager_a, manager_b, agent_a, agent_b):
-        party_repo.add(party)
-
-    services.assignment_service.create_assignment(agent_a.id, manager_a.id, date(2026, 1, 1))
-    services.assignment_service.create_assignment(agent_b.id, manager_b.id, date(2026, 6, 1))
-    # Cross-team bifurcation demo: Casey also reports to Bailey concurrently
-    # as a Secondary — the redesign's own framing of what this case is
-    # going forward (docs/architecture.md, "kind" note under block 2).
-    services.assignment_service.create_assignment(
-        agent_a.id, manager_b.id, date(2026, 2, 1), kind=AssignmentKind.SECONDARY
-    )
-
-
 all_parties = (
     party_repo.list_by_type("functional_owner")
     + party_repo.list_by_type("manager")
@@ -67,16 +46,32 @@ all_parties = (
 )
 
 if not all_parties:
+    # Phase 5: "Seed demo data" is gone (docs/associate_journey_redesign.md,
+    # "No more Seed demo data button") — trying the product and setting up
+    # a real client are now the exact same path: download a workbook,
+    # upload it through Bulk Setup. This one only differs in content
+    # (fabricated names + a full year of rotation history), never in code
+    # path.
     st.title("Welcome to ITAP")
     st.write(
-        "No Associates, Managers, or Functional Owners exist yet. Click "
-        "below to create a small demo world, or onboard the first "
-        "Functional Owner directly against the database to get started "
-        "for real."
+        "No Associates, Managers, or Functional Owners exist yet. A fresh "
+        "deployment starts empty — bring your team to life by uploading a "
+        "Setup Workbook through **Bulk Setup** once you sign in, or "
+        "download a ready-made demo dataset below to see a full year of "
+        "rotation history without typing anything in by hand."
     )
-    if st.button("Seed demo data"):
-        _seed_demo_data()
-        st.rerun()
+    st.download_button(
+        "Download demo dataset (.xlsx)",
+        data=generate_demo_workbook.build_demo_workbook(),
+        file_name="itap_demo_dataset.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    st.caption(
+        "After downloading: sign in as the first Admin below, then use "
+        "Workforce Overview → Bulk Setup to upload it — same upload path "
+        "a real client's file goes through."
+    )
+    home.render(services)
     st.stop()
 
 viewer_party_id = st.session_state.get("viewer_party_id")

@@ -19,6 +19,8 @@ from .domain import (
     Skill,
     SkillSource,
     Team,
+    UploadAudit,
+    UploadKind,
 )
 from .ports import CatalogRepo
 
@@ -160,3 +162,30 @@ class CatalogService:
 
     def list_leave(self, agent_id: UUID) -> list[AnnualLeave]:
         return self._repo.list_leave(agent_id)
+
+    # -- Upload audit log (Phase 5) --
+
+    def log_upload(
+        self,
+        uploaded_by_name: str,
+        kind: UploadKind,
+        filename: str,
+        raw_file: bytes,
+        summary: Optional[dict] = None,
+        errors: Optional[list] = None,
+        uploaded_by: Optional[UUID] = None,
+    ) -> UploadAudit:
+        audit = UploadAudit(
+            uploaded_by_name=uploaded_by_name,
+            uploaded_by=uploaded_by,
+            kind=kind,
+            filename=filename,
+            raw_file=raw_file,
+            summary=summary or {},
+            errors=errors or [],
+        )
+        self._repo.add_upload_audit(audit)
+        return audit
+
+    def list_uploads(self) -> list[UploadAudit]:
+        return self._repo.list_upload_audits()

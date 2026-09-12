@@ -140,9 +140,26 @@ def render(services) -> None:
             with st.expander("Add a new person (ITAP Admin setup)"):
                 st.caption(
                     "Email is optional today, but is the field a future SSO "
-                    "integration would match against — worth filling in now."
+                    "integration would match against — worth filling in now. "
+                    "On a brand-new deployment, use this to create the first "
+                    "ITAP Admin, then sign in as them and use Bulk Setup for "
+                    "everyone else."
                 )
-                col1, col2 = st.columns(2)
+                col0, col1, col2 = st.columns(3)
+                with col0:
+                    with st.form("home_new_admin"):
+                        name = st.text_input("Admin name", key="home_admin_name")
+                        email = st.text_input("Email (optional)", key="home_admin_email")
+                        if st.form_submit_button("Create ITAP Admin") and name:
+                            attrs = {"email": email} if email else {}
+                            services.party_repo.add(
+                                Party(
+                                    party_type="functional_owner",
+                                    display_name=name,
+                                    attributes=attrs,
+                                )
+                            )
+                            st.rerun()
                 with col1:
                     with st.form("home_new_agent"):
                         name = st.text_input("Associate name")

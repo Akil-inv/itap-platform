@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 
-from catalog.domain import CcaStatus, InterestTargetType, SkillSource
+from catalog.domain import CcaStatus, InterestTargetType, SkillSource, UploadKind
 from catalog.service import CatalogService
 
 
@@ -122,3 +122,15 @@ def test_declare_leave_is_informational_only(service):
     leave = service.list_leave(agent_id)
     assert len(leave) == 1
     assert leave[0].note == "Family trip"
+
+
+def test_log_upload_then_list_uploads(service):
+    service.log_upload(
+        "Priya", UploadKind.WORKBOOK, "setup.xlsx", b"data",
+        summary={"created": 2}, errors=[],
+    )
+
+    uploads = service.list_uploads()
+    assert len(uploads) == 1
+    assert uploads[0].filename == "setup.xlsx"
+    assert uploads[0].summary == {"created": 2}

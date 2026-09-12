@@ -23,6 +23,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     Engine,
+    LargeBinary,
     MetaData,
     String,
     Table,
@@ -51,6 +52,8 @@ from ..domain import (
     SkillSource,
     Team,
     TeamNotFound,
+    UploadAudit,
+    UploadKind,
 )
 
 metadata = MetaData()
@@ -134,6 +137,20 @@ annual_leave_table = Table(
     Column("created_at", DateTime(timezone=True), nullable=False),
 )
 
+upload_audits_table = Table(
+    "catalog_upload_audits",
+    metadata,
+    Column("id", String(36), primary_key=True),
+    Column("uploaded_by", String(36), nullable=True),
+    Column("uploaded_by_name", String(200), nullable=False),
+    Column("kind", String(16), nullable=False),
+    Column("filename", String(500), nullable=False),
+    Column("uploaded_at", DateTime(timezone=True), nullable=False),
+    Column("summary", JSON, nullable=False),
+    Column("errors", JSON, nullable=False),
+    Column("raw_file", LargeBinary, nullable=False),
+)
+
 _ALL_TABLES = [
     skills_table,
     teams_table,
@@ -143,6 +160,7 @@ _ALL_TABLES = [
     interest_flags_table,
     interest_activity_table,
     annual_leave_table,
+    upload_audits_table,
 ]
 
 
@@ -386,6 +404,47 @@ class SqlCatalogRepo:
                 end_date=r["end_date"],
                 note=r["note"],
                 created_at=r["created_at"],
+            )
+            for r in rows
+        ]
+
+    # -- Upload audit log --
+    def add_upload_audit(self, audit: UploadAudit) -> None:
+        with self._engine.begin() as conn:
+            conn.execute(
+                insert(upload_audits_table).values(
+                    id=str(audit.id),
+                    uploaded_by=str(audit.uploaded_by) if audit.uploaded_by else None,
+                    uploaded_by_name=audit.uploaded_by_name,
+                    kind=audit.kind.value,
+                    filename=audit.filename,
+                    uploaded_at=audit.uploaded_at,
+                    summary=audit.summary,
+                    errors=audit.errors,
+                    raw_file=audit.raw_file,
+                )
+            )
+
+    def list_upload_audits(self) -> list[UploadAudit]:
+        with self._engine.connect() as conn:
+            rows = (
+                conn.execute(
+                    select(upload_audits_table).order_by(upload_audits_table.c.uploaded_at.desc())
+                )
+                .mappings()
+                .all()
+            )
+        return [
+            UploadAudit(
+                id=UUID(r["id"]),
+                uploaded_by=UUID(r["uploaded_by"]) if r["uploaded_by"] else None,
+                uploaded_by_name=r["uploaded_by_name"],
+                kind=UploadKind(r["kind"]),
+                filename=r["filename"],
+                uploaded_at=r["uploaded_at"],
+                summary=r["summary"] or {},
+                errors=r["errors"] or [],
+                raw_file=bytes(r["raw_file"] or b""),
             )
             for r in rows
         ]

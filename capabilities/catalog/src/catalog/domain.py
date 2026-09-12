@@ -216,6 +216,40 @@ class AnnualLeave:
 # --- Errors -------------------------------------------------------------------
 
 
+# --- Upload audit log (Phase 5, client deployment & setup) --------------------
+
+
+class UploadKind(str, Enum):
+    """What was uploaded through the Bulk Setup screen. WORKBOOK is the
+    Setup Workbook (.xlsx); PHOTOS is the optional photos.zip — see
+    docs/associate_journey_redesign.md's "Client deployment & setup data
+    model" section."""
+
+    WORKBOOK = "workbook"
+    PHOTOS = "photos"
+
+
+@dataclass
+class UploadAudit:
+    """A record of one Bulk Setup upload — who, when, what, and a result
+    summary — kept separate from the live data (which stays upserted, one
+    current truth) per spec: "history for the setup files themselves,"
+    not version history of the domain data. The raw file bytes are
+    retained for traceability (re-download exactly what was uploaded).
+    Append-only: there is no update method, matching the same
+    audit-integrity reasoning as `assignment.ClosureRecord`."""
+
+    uploaded_by_name: str
+    kind: UploadKind
+    filename: str
+    id: UUID = field(default_factory=uuid4)
+    uploaded_by: Optional[UUID] = None
+    uploaded_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    summary: dict = field(default_factory=dict)
+    errors: list = field(default_factory=list)
+    raw_file: bytes = b""
+
+
 class SkillNotFound(Exception):
     def __init__(self, skill_id: UUID):
         super().__init__(f"Skill {skill_id} not found")

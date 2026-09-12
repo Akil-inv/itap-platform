@@ -20,6 +20,8 @@ from catalog.domain import (
     SkillSource,
     Team,
     TeamNotFound,
+    UploadAudit,
+    UploadKind,
 )
 
 
@@ -288,3 +290,39 @@ def test_list_leave_scoped_to_agent(catalog_repo):
     )
 
     assert len(catalog_repo.list_leave(mine)) == 1
+
+
+# -- Upload audit log --
+
+
+def test_upload_audit_round_trips(catalog_repo):
+    audit = UploadAudit(
+        uploaded_by_name="Priya",
+        uploaded_by=uuid4(),
+        kind=UploadKind.WORKBOOK,
+        filename="setup.xlsx",
+        summary={"created": 3, "updated": 1, "skipped": 0, "error": 0},
+        errors=["row 4: bad date"],
+        raw_file=b"fake-bytes",
+    )
+    catalog_repo.add_upload_audit(audit)
+
+    fetched = catalog_repo.list_upload_audits()
+    assert len(fetched) == 1
+    got = fetched[0]
+    assert got.uploaded_by_name == "Priya"
+    assert got.kind == UploadKind.WORKBOOK
+    assert got.filename == "setup.xlsx"
+    assert got.summary == {"created": 3, "updated": 1, "skipped": 0, "error": 0}
+    assert got.errors == ["row 4: bad date"]
+    assert got.raw_file == b"fake-bytes"
+
+
+def test_upload_audits_listed_newest_first(catalog_repo):
+    first = UploadAudit(uploaded_by_name="Priya", kind=UploadKind.WORKBOOK, filename="a.xlsx")
+    catalog_repo.add_upload_audit(first)
+    second = UploadAudit(uploaded_by_name="Priya", kind=UploadKind.PHOTOS, filename="photos.zip")
+    catalog_repo.add_upload_audit(second)
+
+    fetched = catalog_repo.list_upload_audits()
+    assert [a.filename for a in fetched] == ["photos.zip", "a.xlsx"]

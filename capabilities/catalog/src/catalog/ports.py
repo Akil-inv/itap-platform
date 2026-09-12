@@ -20,6 +20,7 @@ from .domain import (
     InterestFlag,
     Skill,
     Team,
+    UploadAudit,
 )
 
 
@@ -76,3 +77,11 @@ class CatalogRepo(Protocol):
     def add_leave(self, leave: AnnualLeave) -> None: ...
 
     def list_leave(self, agent_id: UUID) -> list[AnnualLeave]: ...
+
+    # -- Upload audit log (Phase 5) --
+    def add_upload_audit(self, audit: UploadAudit) -> None: ...
+
+    def list_upload_audits(self) -> list[UploadAudit]:
+        """Newest first — the feed the read-only admin screen lists
+        from."""
+        ...

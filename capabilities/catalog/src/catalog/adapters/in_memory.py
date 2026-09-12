@@ -16,6 +16,7 @@ from ..domain import (
     SkillNotFound,
     Team,
     TeamNotFound,
+    UploadAudit,
 )
 
 
@@ -35,6 +36,7 @@ class InMemoryCatalogRepo:
         self._interest_flags: dict[UUID, InterestFlag] = {}
         self._interest_activity: dict[UUID, InterestActivity] = {}  # keyed by agent_id
         self._leave: dict[UUID, AnnualLeave] = {}
+        self._upload_audits: dict[UUID, UploadAudit] = {}
 
     # -- Skills --
     def add_skill(self, skill: Skill) -> None:
@@ -124,3 +126,14 @@ class InMemoryCatalogRepo:
 
     def list_leave(self, agent_id: UUID) -> list[AnnualLeave]:
         return [replace(l) for l in self._leave.values() if l.agent_id == agent_id]
+
+    # -- Upload audit log --
+    def add_upload_audit(self, audit: UploadAudit) -> None:
+        self._upload_audits[audit.id] = replace(audit)
+
+    def list_upload_audits(self) -> list[UploadAudit]:
+        return sorted(
+            (replace(a) for a in self._upload_audits.values()),
+            key=lambda a: a.uploaded_at,
+            reverse=True,
+        )

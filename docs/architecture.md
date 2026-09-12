@@ -939,3 +939,188 @@ adapters) and `apps/streamlit_ui/` for the changes:
   added (see MVP decisions above — still not a real security boundary).
 - Raw technical exception text reached end users → RuleEngine's fallback
   message rewritten to be user-facing; most guard messages already were.
+
+### Client deployment & setup data model (2026-09-12, associate-journey redesign, Phase 5)
+
+Built the last section of `docs/associate_journey_redesign.md`, "Client
+deployment & setup data model": moved the app from "seed demo data for a
+look around" to a real, repeatable client-onboarding path — a fresh
+deployment starts empty, and everything (including a full year of
+rotation history for a demo) comes in through the same two upload
+artifacts a real client would use: the Setup Workbook and an optional
+`photos.zip`.
+
+**Extended Setup Workbook schema (`apps/streamlit_ui/bulk_import.py`)**:
+
+- `Managers` gained `team_name` — seeds the Teams catalog directly off
+  this sheet (one Team per Manager, per the MVP "one-team-one-manager"
+  resolution).
+- `Associates` gained `photo_filename`, `bio`, `experience_summary`,
+  `project_highlights`, `skills` (semicolon-separated), `interested_teams`,
+  `interested_ccas` (semicolon-separated) — upserts the associate's
+  `AssociateProfile`, self-declared `AssociateSkill`s, and `InterestFlag`s
+  from `capabilities/catalog`.
+- `Criteria Library` renamed to **`Skills`** and now feeds the *live*
+  Skills catalog (`CatalogService.add_skill`), not a reference-only sheet
+  — closing the gap Phase 1's "Not built in this pass" note called out.
+- New **`CCA Activities`** sheet (`name`, `organizer_name`,
+  `organizer_email`, `status`) seeds `CcaActivity` rows.
+- `Assignments` gained `kind` (primary/secondary/cca, default primary)
+  and three columns used only for an already-finished stint: `status`
+  (active/closed), `objective_score`, `subjective_notes`. A row with
+  `status=closed` is created (or, if matched, transitioned) **already
+  closed and scored** — never "create open, leave it to be closed later."
+
+**Constructing a closed historical Assignment — judgment call:**
+`AssignmentService` was not given a new "create pre-closed" method.
+Per this document's own architecture ("the service layer stays
+permissive... this data-model layer stays permissive"), the existing
+three-call sequence already supports it end to end with historical
+dates: `create_assignment(start_date=..., end_date=...)` →
+`record_goal_setting(...)` (if goals/criteria are present) →
+`close_assignment(objective_score, subjective_notes, reason="completed",
+as_of=end_date)`. The `as_of` parameter (already existed, used by
+`guard_min_elapsed`) is what makes this work for a stint that ended long
+ago — it evaluates the minimum-elapsed-days gate against the row's own
+historical `end_date` rather than "today," so a 6-month-long stint from
+last year closes cleanly in one import despite the live 30-day gate.
+`bulk_import._apply_assignment_row` runs exactly this sequence; no
+`assignment` service or domain change was needed.
+
+**Upsert semantics — a real behavior change, not additive.** Every
+`bulk_import.py` row previously matched-and-reused-unchanged for people
+and skipped a duplicate Assignment outright; it now matches by natural
+key and **updates the matched record's fields to whatever the file now
+says**:
+
+- People (Admins/Managers/Associates): matched by email first, else
+  unambiguous exact name (unchanged); a match's `attributes` (function,
+  email) are now upserted via `PartyRepo.update_attributes` rather than
+  left untouched. **Judgment call**: `display_name` itself is never
+  changed on a match — `PartyRepo.update_attributes` only merges
+  `attributes`, there is no port method to rename a Party — adding one
+  was judged not worth it for this pass since the natural key is email,
+  not name; flagged in `bulk_import.py`'s own module docstring.
+- Catalogs (Skills/Teams/CCA Activities): matched by name; a Team's
+  manager or a CCA's organizer/status can be corrected on re-upload.
+- Assignments: matched by associate + manager + kind + start_date. A
+  still-ACTIVE match's `end_date`/goals/criteria are updated in place; a
+  `status=closed` row against a still-active match actually closes it
+  (the "upload once while ongoing, re-upload once finished" path). A
+  match that is **already CLOSED** is left alone unless the new row is
+  identical (reported as unchanged) — `ClosureRecord` is deliberately
+  append-only (see "Known MVP decisions to revisit," `assignment`
+  package) and this pass did not add an override path around that;
+  correcting an already-imported score requires the admin's existing
+  Approvals reopen action, not a re-import. Nothing is ever duplicated in
+  either case — an unmatched row still creates a new record exactly as
+  before. `test_bulk_import.py` covers both the create and the update
+  path explicitly, including a re-upload with one changed field
+  (a Manager's `function`, an Associate's `bio`, an Assignment's
+  `end_date`) updating in place with no new row created.
+
+**`photos.zip` (new, optional)**: `bulk_import.match_photos_to_associates`
+matches each zip entry's filename against an Associates-sheet row's
+`email` or `photo_filename` column (whole-filename or stem-only, so
+`casey@example.com.jpg` and `casey.jpg` both work). **Judgment call on
+storage**: `AssociateProfile.photo_url` is a plain `Optional[str]` with
+no blob-storage adapter anywhere in this codebase, and `views/
+associate_portfolio.py` already just calls `st.image(profile.photo_url)`
+— which works identically for a URL or a local file path. Rather than
+invent a new storage adapter, `photo_storage.py` writes the image to a
+local directory (`$PHOTO_STORAGE_DIR`, default `./uploaded_photos`,
+keyed by Agent id) and sets `photo_url` to that path — "follow the
+existing shape" rather than add one. Revisit with a real object-storage
+adapter if a deployment ever needs to run across multiple app instances
+that don't share a filesystem.
+
+**Upload audit log — new `catalog.domain.UploadAudit` /
+`UploadKind`.** Lives in `capabilities/catalog` (its port/service/both
+adapters), not a new capability: it is small, has no rule engine or
+guarded state machine, and is squarely the same "admin-declared setup
+data" rate of change as the rest of that package (see the Phase 1
+"Catalog capability" note above for the fuller reasoning already applied
+here). Append-only, same audit-integrity reasoning as
+`assignment.ClosureRecord` — no update method. Records who uploaded
+(admin party id + display name), when, what (`WORKBOOK`/`PHOTOS`), a
+result summary (the same created/updated/reused/skipped/error counts the
+Bulk Setup screen already showed), any row errors, and the **raw file
+bytes** for traceability. `CatalogService.log_upload`/`list_uploads`
+front it. **Where the read-only admin screen lives — judgment call**:
+folded into the existing **Bulk Setup tab** (a "Past uploads (audit log)"
+expander, right below the template download) rather than a new top-level
+tab or folded into Setup — this is history *about* an upload action
+taken on this exact tab, not admin-editable master data like
+Skills/Teams/CCA (Setup's own scope), so it stays next to the action it
+logs rather than living somewhere the admin would have to remember to
+check separately.
+
+**"Seed demo data" removed.** `app.py._seed_demo_data` and its welcome-
+screen button are gone. In their place: `generate_demo_workbook.py`
+builds an in-the-new-schema demo Setup Workbook on the fly (3 Admins, 6
+Managers/Teams, 18 Associates, an 8-entry Skills catalog, 3 CCA
+Activities, and — per spec's "a full year of rotation history if they
+want to showcase one" — 2-3 closed-and-scored historical Primary stints
+per Associate before their current still-open one), offered as a
+`st.download_button` on the now-empty welcome screen. **Judgment call on
+scale**: `HANDOVER_itap-platform.md` references an earlier
+"4-admin/15-manager/40-associate" Bulk Setup sample, but that generator
+script does not exist anywhere in this repo — only the mention survived.
+Rather than fabricate a match to numbers with no surviving source,
+`generate_demo_workbook.py`'s own docstring documents this and picks a
+fresh, reasonably-scaled dataset in the same spirit (fast to import,
+easy to look at, still shows real variety and a full year of history).
+Downloading and then uploading it through Bulk Setup is the *only* path
+to this data — there is no special seeding code in `app.py` anymore, per
+spec ("trying the product and using it for real are the same code
+path"). A brand-new deployment also had no way to create its first
+Functional Owner at all once the seed button was removed (the existing
+`home.py` "Add a new person" expander only had Associate/Manager forms)
+— `home.py` gained a third "Create ITAP Admin" form alongside them,
+closing that bootstrap gap.
+
+**Console reset command**: `apps/streamlit_ui/reset_db.py` — drops and
+recreates every table across all four capabilities this app wires up
+(`party_identity`, `assignment`, `rotation_plan`, `catalog`), using each
+package's own SQLAlchemy `metadata.drop_all`/`create_schema` rather than
+raw `DROP TABLE` statements, so it can never drift from what each
+package's adapter actually defines. Also clears the local photo storage
+directory, since an orphaned photo file with no `AssociateProfile` row
+pointing at it would otherwise survive a reset. Requires typing `yes` at
+a confirmation prompt (or `--yes` / `RESET_DB_CONFIRM=yes` for scripted
+use) — deliberately a separate command-line script, never a button
+inside the app itself.
+
+**Test coverage**: `capabilities/catalog` gained 6 new tests (the
+`UploadAudit` repo contract, newest-first ordering, and the service's
+`log_upload`/`list_uploads`) — 75 passing (was 69).
+`apps/streamlit_ui/test_bulk_import.py` was rewritten for the new schema
+and covers, in addition to the existing template-round-trip/missing-
+column checks: creating people/Teams/Skills/CCAs/Assignments including a
+historical closed-and-scored row in one pass, the associate profile/
+self-declared-skills/interest-flags parsed straight from the template's
+example row, a same-file re-upload creating nothing new, a re-upload
+with one changed field (manager function / associate bio / assignment
+end date) **updating** the matched record rather than skipping it, and
+`photos.zip` matching by email and landing on disk. `smoke_test.py`,
+`test_admin_journey_ui.py`, `test_manager_journey_ui.py`, and
+`test_associate_and_approvals_ui.py` all previously bootstrapped their
+fixture data by clicking the now-removed "Seed demo data" button; they
+now call a small shared `test_fixtures.seed_basic_demo(services)` helper
+directly against the service layer instead (same Casey/Dana/Alex/
+Bailey/Priya fixture, including the cross-team-bifurcation Secondary),
+since the app itself deliberately no longer has a seeding code path to
+click through. All four suites, plus every `capabilities/*` pytest suite
+(259 tests total) and `test_rotation_plan_bridge.py`, pass unchanged.
+
+Verified end to end with Playwright (`screenshot_phase5.py`, same
+convention as the other phase screenshot scripts) against a genuinely
+empty database: the welcome screen with no seed button and a working
+demo-dataset download, creating the first Admin through `home.py`'s new
+form, the Bulk Setup tab's workbook + `photos.zip` uploaders and its
+upload-audit-log expander, uploading and confirming the generated demo
+workbook with zero row errors, and the Associates list actually showing
+multi-segment tenure battery bars (several distinct-colored past-stint
+segments per person) — confirming the "full year of rotation history,"
+not just a few months, actually renders from a real upload rather than
+only asserting it in a unit test.

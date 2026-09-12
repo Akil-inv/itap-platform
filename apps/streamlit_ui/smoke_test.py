@@ -10,6 +10,9 @@ os.environ["DATABASE_URL"] = "sqlite:///./smoke_test.db"
 
 from streamlit.testing.v1 import AppTest
 
+import test_fixtures
+from services import get_services
+
 
 def click_button_labeled(at, label):
     matches = [b for b in at.button if b.label == label]
@@ -17,13 +20,14 @@ def click_button_labeled(at, label):
     return matches[0].click().run()
 
 
+# Phase 5 removed app.py's "Seed demo data" button — seed the same
+# fixture directly via the service layer instead of clicking a UI button
+# that no longer exists (see test_fixtures.py's docstring).
+test_fixtures.seed_basic_demo(get_services())
+
 at = AppTest.from_file("app.py", default_timeout=15)
 at.run()
 assert not at.exception, f"Initial render raised: {at.exception}"
-assert "Seed demo data" in str(at.button[0].label)
-
-at.button[0].click().run()
-assert not at.exception, f"Seeding raised: {at.exception}"
 
 # No viewer chosen yet -> the landing/sign-in page renders
 assert "ITAP" in "".join(m.value for m in at.markdown)
