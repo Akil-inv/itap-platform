@@ -553,6 +553,80 @@ associate's profile editor, the admin list's highlight badge rendering)
 parsing is also untouched; teaching it to seed Skills/Teams/CCA rows
 from the workbook is a separate, later pass per the task's instructions.
 
+### Associate-journey admin UI (2026-09-12, associate-journey redesign, Phase 2)
+
+Wired `capabilities/catalog` into the Streamlit app (`services.py` gained
+`catalog_repo`/`catalog_service`) and built the Functional-Owner-facing
+screens from `docs/associate_journey_redesign.md`'s "Admin flow" section.
+Manager/Associate views (`views/manager.py`, `views/agent.py`) are
+untouched — later phases.
+
+- **Associates list** (`views/functional_owner.py._associates_list`,
+  replacing the old flat "All Assignments" tab): one row per Agent.
+  `battery.py` computes the tenure battery bar from the Agent's
+  PRIMARY-kind Assignments only (Secondary/CCA never contribute their
+  own segment, per spec — the Primary spine is what drives tenure);
+  `associate_status.py` classifies each Agent into the spec's four
+  filter buckets. The hidden aggregate score reuses `ScopedAssignmentQueries.consolidated_score` (already averages every closed
+  Assignment of any kind, so no new scoring logic was needed) and sits
+  behind an `st.popover` — chosen as the closest native Streamlit
+  primitive to the spec's "reveal on click, then hide again" bank-balance
+  interaction; there is no dedicated widget for that pattern. The
+  interest-change badge reuses `CatalogService.has_unseen_interest_change`
+  outright.
+- **Associate Portfolio** (`views/associate_portfolio.py`, new — level 2,
+  reached by clicking a name, not a tab): profile section over
+  `CatalogService` (bio/photo/experience/highlights/skills, admin-editable
+  on the Associate's behalf); a rotation timeline built from the Primary
+  spine, each stage expandable to its "N responsibilities" (Secondary/CCA
+  anchored to the Primary stage active on the episode's start date, per
+  the spec's overlap rule); read-only interest flags; and the actions
+  that used to be separate top-level tabs (close + optionally advance to
+  a new Primary in one step, add a Secondary, log a CCA), now scoped to
+  this one Associate instead of scattered across the app. Opening the
+  page calls `mark_interest_seen` immediately, per spec ("opening the
+  profile is what clears it").
+- **Setup** (`views/setup.py`, new top-level tab): three columns over
+  `CatalogService` (Skills/Teams/CCA), each a plain list + add-new form.
+
+**Judgment calls made this pass (spec left them open):**
+
+- **Status filter thresholds** — `associate_status.py`'s module
+  docstring is the source of truth: Active = active Primary, nothing
+  overdue; Needs attention = active Primary flagged by the *existing*
+  overdue-goal-setting/overdue-closure queries (reusing those thresholds
+  instead of inventing new ones); Available = no active Primary but not
+  fully wound down (mid-gap, possibly with an active Secondary/CCA, or
+  never had a Primary yet); Completed = no active Assignment of any
+  kind AND the most recent Primary closed with `closed_reason ==
+  "completed"` (a withdrawn/cut-short Primary, or a still-active
+  Secondary/CCA, keeps the Agent in "Available" instead).
+- **Setup catalog "source" column** — the task's mockup description
+  calls for showing whether a catalog entry came from Excel or was
+  "added here." Skill/Team/CcaActivity carry no `source` field (Phase 1
+  didn't add one, and `bulk_import.py` doesn't seed these catalogs from
+  Excel yet — see the Catalog capability section above), so fabricating
+  the distinction in the UI would show data that doesn't exist. `views/
+  setup.py` says plainly that every entry currently reads as "added
+  here" instead. Revisit once bulk_import seeds these catalogs and a
+  `source` field is worth adding.
+- **App-layer demo seed data** (`app.py._seed_demo_data`): updated the
+  existing Casey/Bailey cross-team-bifurcation demo assignment to
+  `kind=AssignmentKind.SECONDARY` (it was created via the plain,
+  kind-less `create_assignment` call before this pass, defaulting to a
+  second PRIMARY) — otherwise the new Portfolio page showed Casey with
+  two independent "Current" Primary stages instead of one Primary with a
+  nested Secondary responsibility, which is exactly the case the
+  "kind" note under block 2 above already says this scenario should be
+  going forward.
+
+Verified with a new `test_admin_journey_ui.py` (`AppTest`, same
+convention as `smoke_test.py`) plus a real Playwright pass
+(`screenshot_admin_journey.py`) against the running server; all
+pre-existing suites (`smoke_test.py`, `test_bulk_import.py`,
+`test_rotation_plan_bridge.py`, and the `catalog` package's own 69
+tests) still pass unchanged.
+
 ### Resolved via scenario-based gap analysis (2026-09-12)
 
 The following gaps were found by walking every role through every

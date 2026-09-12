@@ -68,7 +68,7 @@ whole batch. Covered by `test_bulk_import.py`.
 
 **A real bug this surfaced, worth knowing about:** all tabs render in
 one Streamlit script pass, in a fixed left-to-right order. Org
-Structure/All Assignments (earlier tabs) are computed *before* Bulk
+Structure/Associates (earlier tabs) are computed *before* Bulk
 Setup (a later tab) runs its import — so a successful import can't
 retroactively update what already rendered earlier in the same pass.
 The fix is `st.rerun()` after a successful import, with the result
@@ -88,6 +88,50 @@ through `party_helpers.disambiguate_labels`, which appends a short id
 suffix only when two people share a display name — otherwise two Associates
 both named "Casey" would be indistinguishable in every selection UI.
 
+## Associate-centric admin screens (Phase 2 of the redesign)
+
+Per `docs/associate_journey_redesign.md`, the Functional Owner's nav
+picked up two changes on top of the existing tab set (`views/
+functional_owner.py`): the old flat **"All Assignments"** tab is now
+**"Associates"** — one row per Associate instead of one row per
+Assignment — and a new **"Setup"** tab holds the Skills/Teams/CCA
+catalogs (`capabilities/catalog`, `views/setup.py`). Manager and
+Associate views are unchanged (a later phase).
+
+**Associates list** (`views/functional_owner.py._associates_list`): name
+(click → opens the Portfolio page), current Primary team/manager (or
+"Available"/"— unassigned —"), a tenure **battery bar** (`battery.py` —
+one segment per 3 months of *total* time in the system, built from the
+Agent's Primary-kind Assignments only: green for the current stint, a
+distinct color per past stint, gray for a gap), a hidden aggregate score
+behind an eye-icon `st.popover` (closest native fit for a "reveal, then
+hide again" interaction — Streamlit has no dedicated widget for it), an
+"interest changed" badge (`CatalogService.has_unseen_interest_change`,
+cleared by opening the profile), and status filter chips (`associate_
+status.py` — Active / Needs attention / Available / Completed; the
+redesign spec leaves the exact thresholds open, so `associate_status.py`
+documents this pass's judgment call in its own docstring).
+
+**Associate Portfolio** (`views/associate_portfolio.py`, reached by
+clicking a name): profile (bio, experience, project highlights, skills
+tagged self/engagement), the Primary-spine **rotation timeline** with
+each stage's "N responsibilities" badge expanding to its overlapping
+Secondary/CCA detail (own manager, dates, score — anchored per the
+spec's overlap rule), read-only declared interest flags, and the
+actions that used to be separate top-level tabs: close the active
+Primary (optionally starting the next one in the same step), add a
+Secondary, log a CCA.
+
+**Setup** (`views/setup.py`): three columns (Skills / Teams / CCA
+activities) over `CatalogService`, each a simple list + add-new form.
+Every entry currently reads as "added here" — `bulk_import.py` doesn't
+seed these catalogs from Excel yet (see `docs/architecture.md`), and the
+domain model has no `source` field to tell the two apart even if it did.
+
+Covered end to end by `test_admin_journey_ui.py` (same `AppTest`
+convention as `smoke_test.py`) and `screenshot_admin_journey.py` (same
+Playwright convention as `screenshot.py`).
+
 ## Running locally
 
 ```bash
@@ -96,7 +140,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt -e ../../capabilities/party_identity \
     -e ../../capabilities/assignment -e ../../capabilities/rbac_scope \
-    -e ../../capabilities/rotation_plan
+    -e ../../capabilities/rotation_plan -e ../../capabilities/catalog
 streamlit run app.py
 ```
 
@@ -233,6 +277,14 @@ no-op, closing an unlinked Assignment is a no-op:
 
 ```bash
 rm -f test_rotation_plan_bridge.db && python test_rotation_plan_bridge.py
+```
+
+`test_admin_journey_ui.py` covers the three Phase 2 admin screens
+(Associates list, Associate Portfolio, Setup) — see "Associate-centric
+admin screens" above:
+
+```bash
+rm -f test_admin_journey_ui.db && python test_admin_journey_ui.py
 ```
 
 ## Visual verification (`screenshot.py`)

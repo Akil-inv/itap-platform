@@ -15,6 +15,10 @@ from assignment.adapters.sql import SqlAssignmentRepo
 from assignment.adapters.sql import create_schema as create_assignment_schema
 from assignment.ports import AssignmentRepo
 from assignment.service import AssignmentService
+from catalog.adapters.sql import SqlCatalogRepo
+from catalog.adapters.sql import create_schema as create_catalog_schema
+from catalog.ports import CatalogRepo
+from catalog.service import CatalogService
 from party_identity.adapters.sql import SqlPartyRepo
 from party_identity.adapters.sql import create_schema as create_party_schema
 from party_identity.ports import PartyRepo
@@ -34,6 +38,8 @@ class Services:
     scope: ScopedAssignmentQueries
     rotation_plan_repo: RotationPlanRepo
     rotation_plan_service: RotationPlanService
+    catalog_repo: CatalogRepo
+    catalog_service: CatalogService
 
 
 @st.cache_resource
@@ -45,6 +51,7 @@ def get_services() -> Services:
     create_party_schema(engine)
     create_assignment_schema(engine)
     create_rotation_plan_schema(engine)
+    create_catalog_schema(engine)
 
     party_repo = SqlPartyRepo(engine)
     assignment_repo = SqlAssignmentRepo(engine)
@@ -52,6 +59,8 @@ def get_services() -> Services:
     scope = ScopedAssignmentQueries(assignment_repo, assignment_service)
     rotation_plan_repo = SqlRotationPlanRepo(engine)
     rotation_plan_service = RotationPlanService(rotation_plan_repo)
+    catalog_repo = SqlCatalogRepo(engine)
+    catalog_service = CatalogService(catalog_repo)
 
     return Services(
         engine=engine,
@@ -61,4 +70,6 @@ def get_services() -> Services:
         scope=scope,
         rotation_plan_repo=rotation_plan_repo,
         rotation_plan_service=rotation_plan_service,
+        catalog_repo=catalog_repo,
+        catalog_service=catalog_service,
     )

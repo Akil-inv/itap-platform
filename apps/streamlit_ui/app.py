@@ -21,6 +21,7 @@ from datetime import date
 from uuid import UUID
 
 import streamlit as st
+from assignment.domain import AssignmentKind
 from party_identity.domain import Party
 from rbac_scope import Role, Viewer
 
@@ -51,8 +52,12 @@ def _seed_demo_data() -> None:
 
     services.assignment_service.create_assignment(agent_a.id, manager_a.id, date(2026, 1, 1))
     services.assignment_service.create_assignment(agent_b.id, manager_b.id, date(2026, 6, 1))
-    # Cross-team bifurcation demo: Casey also reports to Bailey concurrently.
-    services.assignment_service.create_assignment(agent_a.id, manager_b.id, date(2026, 2, 1))
+    # Cross-team bifurcation demo: Casey also reports to Bailey concurrently
+    # as a Secondary — the redesign's own framing of what this case is
+    # going forward (docs/architecture.md, "kind" note under block 2).
+    services.assignment_service.create_assignment(
+        agent_a.id, manager_b.id, date(2026, 2, 1), kind=AssignmentKind.SECONDARY
+    )
 
 
 all_parties = (

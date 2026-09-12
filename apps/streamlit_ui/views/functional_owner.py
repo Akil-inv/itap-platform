@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+from uuid import UUID
 
 import streamlit as st
 from assignment.domain import DuplicateAssignment
@@ -11,21 +12,41 @@ import bulk_import
 import journey_curve
 import org_tree
 import rotation_plan_bridge
+from associate_status import AssociateStatus, classify, current_team_label
+from battery import render_html as render_battery_html
 from party_helpers import disambiguate_labels, safe_get_name
 from rotation_plan.domain import AlreadyEnrolled, RotationPlanNotFound
+from views import associate_portfolio
+from views import setup as setup_view
 
 _MARKER_COLORS = ["#54A24B", "#4C78A8", "#333F6B", "#B9791A", "#8E5A9E", "#C0432F"]
 
 
 def render(services, viewer: Viewer, current_party: Party) -> None:
+    # Associate Portfolio is a level-2 page (per the redesign spec), not
+    # another top-level tab — reached by clicking a name in the
+    # Associates list below, and left by its own "Back" button. It gets
+    # its own title instead of "Workforce Overview" above it.
+    selected_id = st.session_state.get("selected_associate_id")
+    if selected_id is not None:
+        try:
+            agent = services.party_repo.get(UUID(selected_id))
+        except Exception:
+            del st.session_state["selected_associate_id"]
+            st.rerun()
+            return
+        associate_portfolio.render(services, viewer, agent)
+        return
+
     st.title("Workforce Overview")
     st.caption(f"Welcome back, {current_party.display_name}.")
 
     tabs = st.tabs(
         [
-            "All Assignments",
+            "Associates",
             "Org Structure",
             "Onboard & Assign",
+            "Setup",
             "Rotation Plans",
             "Bulk Setup",
             "Overdue",
@@ -35,41 +56,120 @@ def render(services, viewer: Viewer, current_party: Party) -> None:
     )
 
     with tabs[0]:
-        _all_assignments(services, viewer)
+        _associates_list(services, viewer)
     with tabs[1]:
         _org_structure(services, viewer)
     with tabs[2]:
         _onboard_and_assign(services)
     with tabs[3]:
-        _rotation_plans(services)
+        setup_view.render(services)
     with tabs[4]:
-        _bulk_setup(services)
+        _rotation_plans(services)
     with tabs[5]:
-        _overdue(services, viewer)
+        _bulk_setup(services)
     with tabs[6]:
-        _manager_handoff(services, viewer)
+        _overdue(services, viewer)
     with tabs[7]:
+        _manager_handoff(services, viewer)
+    with tabs[8]:
         _consolidated_scores(services, viewer)
 
 
-def _all_assignments(services, viewer: Viewer) -> None:
-    assignments = services.scope.list_visible_assignments(viewer)
-    if not assignments:
-        st.write("No assignments yet.")
+def _associates_list(services, viewer: Viewer) -> None:
+    """The redesign's entry point (docs/associate_journey_redesign.md,
+    "Associates list"): one row per Associate, replacing the old flat
+    "All Assignments" table. Shows current team, a tenure battery bar,
+    a hidden aggregate score behind a reveal, an interest-change
+    highlight, and status filter chips."""
+    agents = services.party_repo.list_by_type("agent")
+    if not agents:
+        st.write("No Associates yet.")
         return
-    rows = [
-        {
-            "Associate": safe_get_name(services.party_repo, a.agent_id),
-            "Manager": safe_get_name(services.party_repo, a.manager_id),
-            "Start": a.start_date,
-            "End": a.end_date,
-            "State": a.state.value,
-            "Closed reason": a.closed_reason or "",
-        }
-        for a in assignments
-    ]
-    with st.container(border=True):
-        st.dataframe(rows, width='stretch')
+
+    overdue_ids = {
+        a.id for a in services.scope.list_overdue_goal_setting(viewer, older_than_days=14)
+    } | {a.id for a in services.scope.list_overdue_closure(viewer)}
+
+    rows = []
+    for agent in sorted(agents, key=lambda p: p.display_name):
+        all_assignments = services.assignment_repo.list_by_agent(agent.id)
+        status = classify(all_assignments, overdue_ids)
+        rows.append((agent, all_assignments, status))
+
+    status_options = ["All"] + [s.value for s in AssociateStatus]
+    chosen = st.radio("Status", status_options, horizontal=True, key="associates_status_filter")
+    if chosen != "All":
+        rows = [r for r in rows if r[2].value == chosen]
+
+    if not rows:
+        st.write("No Associates match this filter.")
+        return
+
+    _STATUS_CSS_CLASS = {
+        AssociateStatus.ACTIVE: "itap-status-active",
+        AssociateStatus.NEEDS_ATTENTION: "itap-status-attention",
+        AssociateStatus.AVAILABLE: "itap-status-available",
+        AssociateStatus.COMPLETED: "itap-status-completed",
+    }
+
+    for agent, all_assignments, status in rows:
+        with st.container(border=True):
+            cols = st.columns([3, 2, 3, 1, 1])
+            with cols[0]:
+                highlighted = services.catalog_service.has_unseen_interest_change(agent.id)
+                if st.button(agent.display_name, key=f"open_{agent.id}", width="stretch"):
+                    st.session_state["selected_associate_id"] = str(agent.id)
+                    st.rerun()
+                badge = (
+                    '<span class="itap-interest-badge">interest changed</span>'
+                    if highlighted
+                    else ""
+                )
+                st.markdown(
+                    f'<span class="itap-status-chip {_STATUS_CSS_CLASS[status]}">'
+                    f"{status.value}</span>{badge}",
+                    unsafe_allow_html=True,
+                )
+            with cols[1]:
+                st.caption("Current team")
+                st.write(current_team_label(services, all_assignments))
+            with cols[2]:
+                st.caption("Tenure")
+                battery_html = render_battery_html(all_assignments)
+                if battery_html:
+                    st.markdown(battery_html, unsafe_allow_html=True)
+                else:
+                    st.caption("No history yet")
+            with cols[3]:
+                st.caption("Score")
+                # A bank-balance "reveal, then hide" interaction has no
+                # native Streamlit widget. st.popover is the closest
+                # idiomatic fit: the score renders only inside the
+                # popover's own overlay, collapsed again as soon as the
+                # user clicks elsewhere — nothing sits inline on the row
+                # by default, matching the spec's "never shown inline."
+                with st.popover("👁"):
+                    score = services.scope.consolidated_score(viewer, agent.id)
+                    st.write(f"{score:.2f}" if score is not None else "No closed episodes yet")
+            with cols[4]:
+                st.caption(" ")
+
+    st.divider()
+    with st.expander("Raw assignment table (all kinds, all history)"):
+        assignments = services.scope.list_visible_assignments(viewer)
+        table_rows = [
+            {
+                "Associate": safe_get_name(services.party_repo, a.agent_id),
+                "Manager": safe_get_name(services.party_repo, a.manager_id),
+                "Kind": a.kind.value,
+                "Start": a.start_date,
+                "End": a.end_date,
+                "State": a.state.value,
+                "Closed reason": a.closed_reason or "",
+            }
+            for a in assignments
+        ]
+        st.dataframe(table_rows, width='stretch')
 
 
 def _org_structure(services, viewer: Viewer) -> None:

@@ -131,6 +131,50 @@ div[data-testid="stMetric"] {
 .itap-step-upcoming .itap-step-label { color: #8A94A6; }
 .itap-step-line-done { background-color: #54A24B; }
 .itap-step-line-upcoming { background-color: #E4E7EB; }
+
+/* Associates list */
+.itap-battery {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex-wrap: wrap;
+}
+.itap-battery-seg {
+    width: 9px;
+    height: 18px;
+    border-radius: 2px;
+}
+.itap-interest-badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #FFFFFF;
+    background-color: #16707F;
+    border-radius: 999px;
+    padding: 0.1rem 0.55rem;
+    margin-left: 0.4rem;
+    vertical-align: middle;
+}
+.itap-status-chip {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    border-radius: 999px;
+    padding: 0.15rem 0.6rem;
+}
+.itap-status-active { background-color: #E3F1E6; color: #3F7D57; }
+.itap-status-attention { background-color: #FBEAE3; color: #B24A2C; }
+.itap-status-available { background-color: #EAF1F8; color: #333F6B; }
+.itap-status-completed { background-color: #EDEDED; color: #6B7280; }
+
+/* Rotation timeline (portfolio page) */
+.itap-stage-card {
+    border-left: 4px solid #E4E7EB;
+    padding: 0.35rem 0 0.35rem 0.9rem;
+    margin-bottom: 0.4rem;
+}
+.itap-stage-card.itap-stage-active { border-left-color: #3F7D57; }
+.itap-stage-card.itap-stage-gap { border-left-color: #B9B9B9; border-left-style: dashed; }
 </style>
 """
 
