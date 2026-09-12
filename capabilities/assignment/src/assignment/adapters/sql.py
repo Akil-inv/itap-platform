@@ -34,8 +34,10 @@ from sqlalchemy import (
     String,
     Table,
     Text,
+    inspect,
     insert,
     select,
+    text,
     update,
 )
 
@@ -97,6 +99,33 @@ reverse_feedback_table = Table(
 )
 
 
+def _ensure_columns(engine: Engine, table: Table, backfill: Optional[dict] = None) -> None:
+    """Additive-only schema patch for tables that already existed on disk
+    before a column was added to this module's table definitions.
+
+    `metadata.create_all()` only creates missing *tables* -- it never adds
+    missing *columns* to a table that already exists. Without this, an
+    older local/dev database file (created before, say, `criteria` or
+    `version` existed) breaks every query against the new column with a
+    raw `OperationalError` instead of self-healing. Not a real migration
+    framework -- revisit with Alembic if schema evolution outgrows this.
+    """
+    inspector = inspect(engine)
+    if table.name not in inspector.get_table_names():
+        return
+    existing = {col["name"] for col in inspector.get_columns(table.name)}
+    missing = [column for column in table.columns if column.name not in existing]
+    if not missing:
+        return
+    backfill = backfill or {}
+    with engine.begin() as conn:
+        for column in missing:
+            col_type = column.type.compile(dialect=engine.dialect)
+            conn.execute(text(f"ALTER TABLE {table.name} ADD COLUMN {column.name} {col_type}"))
+            if column.name in backfill:
+                conn.execute(update(table).values(**{column.name: backfill[column.name]}))
+
+
 def create_schema(engine: Engine) -> None:
     metadata.create_all(
         engine,
@@ -107,6 +136,8 @@ def create_schema(engine: Engine) -> None:
             reverse_feedback_table,
         ],
     )
+    _ensure_columns(engine, assignments_table, backfill={"version": 0})
+    _ensure_columns(engine, goal_settings_table, backfill={"criteria": []})
 
 
 class SqlAssignmentRepo:

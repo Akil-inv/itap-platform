@@ -192,6 +192,21 @@ Last updated: 2026-09-11
   for the convention this sets for any future mutating action. New
   `apps/streamlit_ui/test_bulk_import.py` covers the parsing/import
   logic directly (not just UI wiring via smoke_test.py).
+- Self-healing schema migration (2026-09-12, same day): a user's existing
+  local `itap.db` (created before `criteria`/`version` existed) hit
+  `no such column: goal_settings.criteria`, because `metadata.create_all()`
+  only creates missing tables, never missing columns on a table that
+  already exists. Fixed with `_ensure_columns()` in
+  `capabilities/assignment/src/assignment/adapters/sql.py`: after
+  `create_all()`, it diffs the real on-disk table against the ORM
+  definition and issues `ALTER TABLE ... ADD COLUMN` for anything
+  missing, backfilling `version` to `0` and `criteria` to `[]`. Runs
+  automatically on every `create_schema()` call, so an old local database
+  self-heals on next app start — no need to delete `itap.db`. Not a real
+  migration framework; see "Self-healing additive-column migration" in
+  `docs/architecture.md`. Verified against a hand-built pre-`criteria`
+  SQLite file; all test suites (85 total across the three capabilities)
+  plus `smoke_test.py`/`test_bulk_import.py` still pass.
 
 ### In Progress
 

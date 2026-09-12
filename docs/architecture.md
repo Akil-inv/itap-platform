@@ -256,6 +256,34 @@ against one after a hard page reload) caught the discrepancy. Convention
 going forward: any new mutating action needs `st.rerun()` right after
 its write.
 
+### Self-healing additive-column migration (2026-09-12, same day)
+
+A real-world gap surfaced when a user pulled the `criteria`/`version`
+changes and ran the app against their existing local `itap.db`:
+`sqlite3.OperationalError: no such column: goal_settings.criteria`.
+Root cause: `metadata.create_all()` only creates missing *tables* — it
+never adds missing *columns* to a table that already exists on disk. Any
+local dev database created before a column was added to the schema
+definitions is permanently out of sync with the code, with no recovery
+path except deleting the file.
+
+Fixed in `capabilities/assignment/src/assignment/adapters/sql.py` with
+`_ensure_columns(engine, table, backfill)`: after `metadata.create_all()`,
+it inspects the actual on-disk table (`sqlalchemy.inspect`), diffs its
+columns against the table's ORM definition, and issues
+`ALTER TABLE ... ADD COLUMN ...` for anything missing, backfilling
+existing rows where the column can't sensibly stay `NULL` (`version`
+defaults to `0`, `criteria` defaults to `[]`; `closure_note` needs no
+backfill — it was already nullable). This runs automatically on every
+`create_schema()` call, so an old local database self-heals on next app
+start with no manual steps. Explicitly **not** a real migration framework
+(no down-migrations, no rename/drop support, no versioning) — revisit
+with Alembic if schema evolution outgrows this. Verified by hand-building
+a SQLite file with the pre-`criteria`/pre-`version` schema and confirming
+`create_schema()` + a live query both succeed against it; full test
+suites (`party_identity` 13, `assignment` 59, `rbac_scope` 13) plus
+`smoke_test.py` and `test_bulk_import.py` all still pass.
+
 ### Resolved via scenario-based gap analysis (2026-09-12)
 
 The following gaps were found by walking every role through every
