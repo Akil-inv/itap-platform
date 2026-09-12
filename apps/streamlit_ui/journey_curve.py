@@ -1,0 +1,210 @@
+"""The rotation-plan "journey curve": a winding, ascending path through a
+plan's stages (not a straight timeline), with position(s) plotted on it —
+one "you are here" marker for a single Agent, or one dot per Agent for an
+Admin viewing a whole plan's cohort. Ported from the approved front-page
+mockup (a standalone HTML/JS artifact, not part of this repo) into plain
+Python + inline SVG, following the same zero-external-dependency,
+st.iframe-rendered convention as org_tree.py.
+"""
+from __future__ import annotations
+
+import html
+from dataclasses import dataclass
+from typing import Optional
+
+import streamlit as st
+
+_WIDTH, _HEIGHT = 860, 210
+_MARGIN_X, _MARGIN_Y = 70, 34
+
+
+def _esc(s: str) -> str:
+    return html.escape(s, quote=True)
+
+
+@dataclass
+class _Point:
+    x: float
+    y: float
+
+
+@dataclass
+class _Segment:
+    p0: _Point
+    c1: _Point
+    c2: _Point
+    p1: _Point
+
+
+def _lerp(a: _Point, b: _Point, t: float) -> _Point:
+    return _Point(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t)
+
+
+def _bezier_point(seg: _Segment, t: float) -> _Point:
+    mt = 1 - t
+    x = mt**3 * seg.p0.x + 3 * mt**2 * t * seg.c1.x + 3 * mt * t**2 * seg.c2.x + t**3 * seg.p1.x
+    y = mt**3 * seg.p0.y + 3 * mt**2 * t * seg.c1.y + 3 * mt * t**2 * seg.c2.y + t**3 * seg.p1.y
+    return _Point(x, y)
+
+
+def _split_left(seg: _Segment, t: float) -> _Segment:
+    """De Casteljau subdivision — the sub-curve from 0..t of `seg`."""
+    a = _lerp(seg.p0, seg.c1, t)
+    b = _lerp(seg.c1, seg.c2, t)
+    c = _lerp(seg.c2, seg.p1, t)
+    d = _lerp(a, b, t)
+    e = _lerp(b, c, t)
+    f = _lerp(d, e, t)
+    return _Segment(seg.p0, a, d, f)
+
+
+class _Curve:
+    def __init__(self, n: int) -> None:
+        self.points: list[_Point] = []
+        for i in range(n):
+            x = _MARGIN_X if n == 1 else _MARGIN_X + i * (_WIDTH - 2 * _MARGIN_X) / (n - 1)
+            rise = 0 if n == 1 else i * (_HEIGHT - 2 * _MARGIN_Y) / (n - 1)
+            edge = 0 if 0 < i < n - 1 else 1
+            wiggle = (12 if i % 2 == 0 else -12) * (1 - edge * 0.7)
+            self.points.append(_Point(x, (_HEIGHT - _MARGIN_Y) - rise + wiggle))
+
+        self.segments: list[_Segment] = []
+        for s in range(n - 1):
+            p0, p1 = self.points[s], self.points[s + 1]
+            dx = p1.x - p0.x
+            self.segments.append(
+                _Segment(p0, _Point(p0.x + dx * 0.5, p0.y), _Point(p1.x - dx * 0.5, p1.y), p1)
+            )
+
+    def full_path_d(self) -> str:
+        d = f"M {self.points[0].x:.1f},{self.points[0].y:.1f} "
+        for seg in self.segments:
+            d += (
+                f"C {seg.c1.x:.1f},{seg.c1.y:.1f} {seg.c2.x:.1f},{seg.c2.y:.1f} "
+                f"{seg.p1.x:.1f},{seg.p1.y:.1f} "
+            )
+        return d
+
+    def traveled_path_d(self, progress: float) -> str:
+        n = len(self.points)
+        full = int(progress)
+        t = progress - full
+        if full >= n - 1:
+            return self.full_path_d()
+        d = f"M {self.points[0].x:.1f},{self.points[0].y:.1f} "
+        for s in range(full):
+            seg = self.segments[s]
+            d += (
+                f"C {seg.c1.x:.1f},{seg.c1.y:.1f} {seg.c2.x:.1f},{seg.c2.y:.1f} "
+                f"{seg.p1.x:.1f},{seg.p1.y:.1f} "
+            )
+        if t > 0:
+            sub = _split_left(self.segments[full], t)
+            d += (
+                f"C {sub.c1.x:.1f},{sub.c1.y:.1f} {sub.c2.x:.1f},{sub.c2.y:.1f} "
+                f"{sub.p1.x:.1f},{sub.p1.y:.1f} "
+            )
+        return d
+
+    def point_at(self, progress: float) -> _Point:
+        n = len(self.points)
+        if n == 1:
+            return self.points[0]
+        full = min(int(progress), n - 2)
+        t = max(0.0, min(1.0, progress - int(progress)))
+        return _bezier_point(self.segments[max(full, 0)], t)
+
+
+def render(
+    stage_names: list[str],
+    stage_subs: Optional[list[str]] = None,
+    progress: Optional[float] = None,
+    markers: Optional[list[dict]] = None,
+    height: int = 260,
+) -> None:
+    """Render the curve. Pass `progress` (a float 0..len(stages)-1, e.g.
+    1.15 = partway into the second stage) for the single-traveler "you are
+    here" view, or `markers` (a list of {"initial", "value", "color"}) to
+    plot several people on one shared plan curve. `stage_subs` is an
+    optional per-stage caption (e.g. the manager currently covering that
+    stage)."""
+    curve = _Curve(len(stage_names))
+    stage_subs = stage_subs or [None] * len(stage_names)
+
+    svg = [f'<svg viewBox="0 0 {_WIDTH} {_HEIGHT + 40}" xmlns="http://www.w3.org/2000/svg" ']
+    svg.append(
+        'style="width:100%; height:auto; font-family:-apple-system,Segoe UI,Helvetica,sans-serif;">'
+    )
+
+    if progress is not None:
+        svg.append(
+            f'<path d="{curve.full_path_d()}" fill="none" stroke="#D8DCE3" '
+            f'stroke-width="4" stroke-dasharray="1 9" stroke-linecap="round"/>'
+        )
+        svg.append(
+            f'<path d="{curve.traveled_path_d(progress)}" fill="none" '
+            f'stroke="#16707F" stroke-width="4" stroke-linecap="round"/>'
+        )
+    else:
+        svg.append(
+            f'<path d="{curve.full_path_d()}" fill="none" stroke="#4C78A8" '
+            f'stroke-width="4" stroke-linecap="round" opacity="0.5"/>'
+        )
+
+    for i, name in enumerate(stage_names):
+        p = curve.points[i]
+        if progress is not None:
+            status = "done" if i < progress else ("current" if int(progress) == i else "upcoming")
+        else:
+            status = "plain"
+        fill = {
+            "done": "#2E8B4F",
+            "current": "#16707F",
+            "upcoming": "#FFFFFF",
+            "plain": "#4C78A8",
+        }[status]
+        stroke = "#D8DCE3" if status == "upcoming" else fill
+        label_y = p.y - 20 if i % 2 == 0 else p.y + 34
+        sub_y = p.y - 6 if i % 2 == 0 else p.y + 49
+        svg.append(
+            f'<circle cx="{p.x:.1f}" cy="{p.y:.1f}" r="8" fill="{fill}" '
+            f'stroke="{stroke}" stroke-width="2"/>'
+        )
+        svg.append(
+            f'<text x="{p.x:.1f}" y="{label_y:.1f}" text-anchor="middle" '
+            f'font-size="12.5" font-weight="700" fill="#1B2233">{_esc(name)}</text>'
+        )
+        if stage_subs[i]:
+            svg.append(
+                f'<text x="{p.x:.1f}" y="{sub_y:.1f}" text-anchor="middle" '
+                f'font-size="11" fill="#8891A0">{_esc(stage_subs[i])}</text>'
+            )
+
+    if progress is not None:
+        me = curve.point_at(progress)
+        svg.append(f'<circle cx="{me.x:.1f}" cy="{me.y:.1f}" r="13" fill="#16707F" opacity="0.18"/>')
+        svg.append(
+            f'<circle cx="{me.x:.1f}" cy="{me.y:.1f}" r="6.5" fill="#16707F" '
+            f'stroke="#FFFFFF" stroke-width="2.5"/>'
+        )
+        svg.append(
+            f'<text x="{me.x:.1f}" y="{me.y - 16:.1f}" text-anchor="middle" '
+            f'font-size="11" font-weight="700" fill="#16707F">You are here</text>'
+        )
+
+    if markers:
+        for m in markers:
+            pt = curve.point_at(m["value"])
+            color = _esc(m.get("color", "#4C78A8"))
+            initial = _esc(str(m.get("initial", "?")))
+            svg.append(
+                f'<circle cx="{pt.x:.1f}" cy="{pt.y + 16:.1f}" r="9" fill="{color}" '
+                f'stroke="#FFFFFF" stroke-width="2"/>'
+            )
+            svg.append(
+                f'<text x="{pt.x:.1f}" y="{pt.y + 30:.1f}" text-anchor="middle" '
+                f'font-size="9.5" font-weight="700" fill="white">{initial}</text>'
+            )
+
+    svg.append("</svg>")
+    st.iframe("".join(svg), height=height)

@@ -8,8 +8,12 @@ from party_identity.domain import Party
 from rbac_scope import Viewer
 
 import bulk_import
+import journey_curve
 import org_tree
 from party_helpers import disambiguate_labels, safe_get_name
+from rotation_plan.domain import AlreadyEnrolled, RotationPlanNotFound
+
+_MARKER_COLORS = ["#54A24B", "#4C78A8", "#333F6B", "#B9791A", "#8E5A9E", "#C0432F"]
 
 
 def render(services, viewer: Viewer, current_party: Party) -> None:
@@ -21,6 +25,7 @@ def render(services, viewer: Viewer, current_party: Party) -> None:
             "All Assignments",
             "Org Structure",
             "Onboard & Assign",
+            "Rotation Plans",
             "Bulk Setup",
             "Overdue",
             "Manager Handoff",
@@ -35,12 +40,14 @@ def render(services, viewer: Viewer, current_party: Party) -> None:
     with tabs[2]:
         _onboard_and_assign(services)
     with tabs[3]:
-        _bulk_setup(services)
+        _rotation_plans(services)
     with tabs[4]:
-        _overdue(services, viewer)
+        _bulk_setup(services)
     with tabs[5]:
-        _manager_handoff(services, viewer)
+        _overdue(services, viewer)
     with tabs[6]:
+        _manager_handoff(services, viewer)
+    with tabs[7]:
         _consolidated_scores(services, viewer)
 
 
@@ -259,6 +266,101 @@ def _manager_handoff(services, viewer: Viewer) -> None:
             )
             st.success(f"Reassigned {len(new_assignments)} Agent(s).")
             st.rerun()
+
+
+def _rotation_plans(services) -> None:
+    st.caption(
+        "A fixed, named path of stages an Intern rotates through — so "
+        "their next placement isn't a one-off decision each time. "
+        "Stages are tracks/labels (e.g. \"Data Team\"), not a specific "
+        "Manager — the Manager for each stage still comes from a normal "
+        "Assignment, created separately."
+    )
+
+    with st.expander("Create a rotation plan"):
+        with st.form("new_rotation_plan"):
+            name = st.text_input("Plan name", placeholder="Engineering Foundations Track")
+            stages_raw = st.text_input(
+                "Stages, in order (semicolon-separated)",
+                placeholder="Platform Team; Data Team; Product Team",
+            )
+            weeks = st.number_input("Weeks per stage", min_value=1, value=8)
+            if st.form_submit_button("Create plan") and name and stages_raw:
+                stage_names = [s.strip() for s in stages_raw.split(";") if s.strip()]
+                try:
+                    services.rotation_plan_service.create_plan(
+                        name=name, stage_names=stage_names, weeks_per_stage=int(weeks)
+                    )
+                    st.success(f"'{name}' created.")
+                    st.rerun()
+                except ValueError as e:
+                    st.error(str(e))
+
+    plans = services.rotation_plan_repo.list_plans()
+    if not plans:
+        st.info("No rotation plans yet — create one above.")
+        return
+
+    plan_labels = {p.name: p for p in plans}
+    with st.expander("Enroll an intern"):
+        agents = services.party_repo.list_by_type("agent")
+        if not agents:
+            st.info("Onboard at least one Intern first.")
+        else:
+            agent_labels = disambiguate_labels(agents)
+            with st.form("enroll_in_plan"):
+                plan_choice = st.selectbox("Plan", list(plan_labels.keys()))
+                agent_choice = st.selectbox("Intern", list(agent_labels.keys()))
+                if st.form_submit_button("Enroll"):
+                    try:
+                        services.rotation_plan_service.enroll(
+                            plan_labels[plan_choice].id, agent_labels[agent_choice].id
+                        )
+                        st.success(f"Enrolled {agent_choice} in '{plan_choice}'.")
+                        st.rerun()
+                    except AlreadyEnrolled:
+                        st.error("This Intern is already enrolled in this plan.")
+
+    for plan in plans:
+        enrollments = services.rotation_plan_repo.list_enrollments_for_plan(plan.id)
+        with st.container(border=True):
+            st.markdown(f"**{plan.name}** — {len(enrollments)} enrolled")
+            st.caption(" → ".join(plan.stage_names) + f" · {plan.weeks_per_stage} weeks/stage")
+
+            if enrollments:
+                markers = []
+                rows = []
+                for i, enrollment in enumerate(enrollments):
+                    agent_name = safe_get_name(services.party_repo, enrollment.agent_id)
+                    value = services.rotation_plan_service.progress_value(enrollment, plan)
+                    color = _MARKER_COLORS[i % len(_MARKER_COLORS)]
+                    markers.append(
+                        {"initial": agent_name[:1].upper(), "value": value, "color": color}
+                    )
+                    stage_name = plan.stage_names[enrollment.current_stage_index]
+                    is_last = enrollment.current_stage_index >= plan.stage_count - 1
+                    rows.append((enrollment, agent_name, stage_name, is_last))
+
+                journey_curve.render(plan.stage_names, markers=markers, height=260)
+
+                for enrollment, agent_name, stage_name, is_last in rows:
+                    col1, col2, col3 = st.columns([2, 2, 1])
+                    with col1:
+                        st.write(f"**{agent_name}**")
+                    with col2:
+                        st.caption(
+                            f"Stage {enrollment.current_stage_index + 1} of "
+                            f"{plan.stage_count} — {stage_name}"
+                        )
+                    with col3:
+                        if not is_last:
+                            if st.button("Advance", key=f"advance_{enrollment.id}"):
+                                services.rotation_plan_service.advance_stage(enrollment.id)
+                                st.rerun()
+                        else:
+                            st.caption("Final stage")
+            else:
+                st.caption("No one enrolled yet.")
 
 
 def _bulk_setup(services) -> None:

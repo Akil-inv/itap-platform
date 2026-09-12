@@ -225,6 +225,25 @@ Last updated: 2026-09-11
   Verified with `smoke_test.py` (unchanged pass, since button labels
   didn't change) and Playwright screenshots of the sign-in page and the
   post-sign-in header.
+- Rotation Plan (2026-09-12, same day): new capability
+  `capabilities/rotation_plan/` — a fixed, named path of stages an Agent
+  is enrolled into (`RotationPlan` + `Enrollment`, same hexagonal shape
+  as every other block), 49 tests passing across in-memory + SQL
+  adapters. `RotationPlanService.progress_value()` computes a fractional
+  position along the plan for the "journey curve" UI
+  (`apps/streamlit_ui/journey_curve.py`, a Python port of the approved
+  mockup's curve, rendered as inline SVG via `st.iframe`). Functional
+  Owner gets a new "Rotation Plans" tab (create a plan, enroll an Agent,
+  see the whole cohort plotted on one curve, manually advance a stage);
+  Agent's "My Journey" shows their own plan curve above their existing
+  per-Assignment cards. Manual verification caught a real bug — SQLite
+  drops datetime tzinfo on round-trip, so `progress_value()` raised a
+  naive/aware `TypeError` — fixed and now covered by parametrizing the
+  service tests over both adapters (not just in-memory); see "Rotation
+  Plan" in `docs/architecture.md` for the full story. Deliberately not
+  yet linked to `assignment`: a plan stage is a label, not a specific
+  Manager/Assignment — an admin reading both screens is what connects
+  them today.
 
 ### In Progress
 

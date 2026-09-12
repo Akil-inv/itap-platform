@@ -5,6 +5,7 @@ from assignment.rules import TransitionDenied
 from party_identity.domain import Party
 from rbac_scope import Viewer
 
+import journey_curve
 from journey import render_stepper, stage_index
 from party_helpers import safe_get_name
 
@@ -12,6 +13,8 @@ from party_helpers import safe_get_name
 def render(services, viewer: Viewer, current_party: Party) -> None:
     st.title("My Journey")
     st.caption(f"Welcome back, {current_party.display_name}.")
+
+    _rotation_plan_progress(services, current_party)
 
     assignments = services.scope.list_visible_assignments(viewer)
     if not assignments:
@@ -26,6 +29,24 @@ def render(services, viewer: Viewer, current_party: Party) -> None:
             expanded=(assignment.state.value == "active"),
         ):
             _assignment_journey(services, viewer, assignment)
+
+
+def _rotation_plan_progress(services, current_party: Party) -> None:
+    enrollments = services.rotation_plan_repo.list_enrollments_for_agent(current_party.id)
+    if not enrollments:
+        return
+    for enrollment in enrollments:
+        plan = services.rotation_plan_repo.get_plan(enrollment.plan_id)
+        value = services.rotation_plan_service.progress_value(enrollment, plan)
+        with st.container(border=True):
+            stage_name = plan.stage_names[enrollment.current_stage_index]
+            st.markdown(f"**Your rotation plan — {plan.name}**")
+            st.caption(
+                f"Stage {enrollment.current_stage_index + 1} of {plan.stage_count} — "
+                f"{stage_name}"
+            )
+            journey_curve.render(plan.stage_names, progress=value, height=260)
+    st.write("")
 
 
 def _assignment_journey(services, viewer: Viewer, assignment) -> None:

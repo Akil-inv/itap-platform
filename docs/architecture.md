@@ -224,6 +224,57 @@ runnable against Postgres with an in-process rule adapter).
 - `ITAP_DEV_MODE=false` hides the identity-switching UI but is a safety
   valve, not a security boundary — the underlying service calls have no
   auth of their own yet. Real auth remains the actual fix.
+- `rotation_plan`'s stages are labels, not a link to a specific
+  Assignment/Manager — an enrolled Agent's actual current Manager still
+  comes from a separately-created Assignment, matched up only by the
+  admin/manager reading both screens. No automatic "closing this
+  Assignment advances the plan" behavior exists yet; advancing a stage is
+  a manual admin action (`RotationPlanService.advance_stage`). Revisit
+  once a second real use case makes the link worth modeling.
+
+### Rotation Plan (2026-09-12, same day)
+
+A new capability, `capabilities/rotation_plan/`: a fixed, named path of
+stages (e.g. "Platform Team" -> "Data Team" -> "Product Team") that an
+Agent is enrolled into, so their next placement isn't a one-off decision
+each time. Domain: `RotationPlan` (name, ordered `stage_names`,
+`weeks_per_stage`) and `Enrollment` (which plan, which Agent, current
+stage index, when the current stage started) — same hexagonal shape as
+every other block (`ports.py`, `adapters/{in_memory,sql}.py`,
+optimistic concurrency on `Enrollment` via `version`). 49 tests passing.
+
+`RotationPlanService.progress_value()` computes a fractional position
+along the plan (completed stages + elapsed-time-in-current-stage /
+`weeks_per_stage`, clamped just under the next integer) — the number the
+UI's "journey curve" plots a marker at. This surfaced a real bug during
+manual verification: SQLite drops datetime tzinfo on round-trip
+regardless of the column's `timezone=True` flag, so an `Enrollment` read
+back via the SQL adapter had a naive `stage_started_at`, and subtracting
+it from `datetime.now(timezone.utc)` raised
+`TypeError: can't subtract offset-naive and offset-aware datetimes`.
+Fixed with a small `_as_utc()` normalizer in the service (treat any naive
+datetime as UTC, since everything here is always written as UTC); the
+`assignment` package never hit this because its elapsed-time math uses
+`date`, not `datetime`. Caught by re-parametrizing the service tests over
+both adapters (mirroring the repo contract tests) rather than only the
+in-memory one — worth remembering for any future service whose tests
+started against `InMemory*` only.
+
+`apps/streamlit_ui/journey_curve.py` is a Python port of the curve from
+the approved front-page mockup (a standalone HTML/JS artifact, not part
+of this repo): a winding, ascending bezier path (not a straight
+timeline), rendered as inline SVG via `st.iframe` — same
+zero-external-dependency convention as `org_tree.py`. Two render modes:
+a single "you are here" marker with the traveled portion drawn solid and
+the rest dashed (Agent's "My Journey"), or one colored dot per enrolled
+Agent on a shared plan curve (Functional Owner's "Rotation Plans" tab,
+"where everyone stands").
+
+Functional Owner gets a new "Rotation Plans" tab: create a plan (name +
+semicolon-separated stages + weeks/stage), enroll an Agent, see the
+cohort plotted on the plan's curve, and manually advance a person's
+stage. Agent's "My Journey" shows their own plan curve (if enrolled)
+above the existing per-Assignment cards, which are unchanged.
 
 ### Bulk Setup + a real Streamlit ordering bug (2026-09-12, same day)
 

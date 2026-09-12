@@ -92,7 +92,8 @@ cd apps/streamlit_ui
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt -e ../../capabilities/party_identity \
-    -e ../../capabilities/assignment -e ../../capabilities/rbac_scope
+    -e ../../capabilities/assignment -e ../../capabilities/rbac_scope \
+    -e ../../capabilities/rotation_plan
 streamlit run app.py
 ```
 
@@ -163,6 +164,29 @@ peer they chose. The equivalent normal-rotation flow is now: Manager
 closes normally (Close assignment tab, scored) once tenure is complete;
 Functional Owner creates the next Assignment via "Onboard & Assign" —
 both already-existing primitives, no new code needed for that case.
+
+## Rotation Plans (`journey_curve.py`, `capabilities/rotation_plan`)
+
+A fixed, named path of stages (e.g. "Platform Team" -> "Data Team" ->
+"Product Team") an Agent is enrolled into, so their next placement isn't
+a one-off decision each time. Functional Owner's "Rotation Plans" tab:
+create a plan (name, semicolon-separated stages, weeks/stage), enroll an
+Agent, and see the whole enrolled cohort plotted on one shared curve —
+plus a manual "Advance" action per person (there's no automatic link
+between closing an Assignment and advancing a plan stage yet, see
+`docs/architecture.md`). The Agent's "My Journey" page shows their own
+plan, if enrolled, as a curve with a "you are here" marker, above their
+existing per-Assignment cards.
+
+The curve itself (`journey_curve.py`) is a winding, ascending bezier
+path — not a straight timeline — rendered as inline SVG via `st.iframe`,
+same zero-external-dependency convention as `org_tree.py`. It's a direct
+Python port of the curve from the approved front-page mockup.
+
+A stage is a label/track, not a specific Manager — the Manager for a
+given stage still comes from a normal Assignment created separately.
+Nothing here auto-matches an Assignment to a plan stage; an admin reading
+both screens is what connects them today.
 
 ## Smoke test
 
