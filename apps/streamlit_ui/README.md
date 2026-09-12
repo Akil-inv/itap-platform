@@ -187,10 +187,13 @@ A stage is a label/track, not a specific Manager — the Manager for a
 given stage still comes from a normal Assignment created separately.
 `Enrollment.stage_assignments` records which Assignment covers which
 stage (by id only), filled in by an admin from each enrollment row's
-"Link an active Assignment to this stage" control — nothing auto-matches
-one to the other, and closing an Assignment doesn't advance a stage (or
-vice versa). Once linked, the Agent's own journey curve shows the
-covering Manager's name under each reached stage.
+"Link an active Assignment to this stage" control. Once linked, the
+Agent's own journey curve shows the covering Manager's name under each
+reached stage — and closing that Assignment (a normal close, a
+withdrawal, or a manager handoff) auto-advances the stage to the next
+one (`rotation_plan_bridge.py`), so the common path needs the "Advance"
+button only when a stage was never linked to an Assignment in the first
+place.
 
 ## Smoke test
 
@@ -210,6 +213,15 @@ detection, create vs. reuse vs. skip behavior), not the UI wiring:
 
 ```bash
 rm -f test_bulk_import.db && python test_bulk_import.py
+```
+
+`test_rotation_plan_bridge.py` is the same idea for
+`rotation_plan_bridge.py`: closing a linked Assignment advances the
+right Enrollment's stage, closing one linked to the last stage is a
+no-op, closing an unlinked Assignment is a no-op:
+
+```bash
+rm -f test_rotation_plan_bridge.db && python test_rotation_plan_bridge.py
 ```
 
 ## Visual verification (`screenshot.py`)

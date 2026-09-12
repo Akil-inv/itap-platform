@@ -224,12 +224,13 @@ runnable against Postgres with an in-process rule adapter).
 - `ITAP_DEV_MODE=false` hides the identity-switching UI but is a safety
   valve, not a security boundary — the underlying service calls have no
   auth of their own yet. Real auth remains the actual fix.
-- Stages are still not *auto*-linked: `Enrollment.stage_assignments` (see
-  "Linking a stage to its Assignment" below) is a record an admin fills
-  in by hand, one link at a time. Closing an Assignment doesn't advance
-  a plan, and advancing a plan doesn't create or close an Assignment —
-  both remain manual admin actions. Worth automating once the manual
-  step becomes a real point of friction, not before.
+- Linking a stage to its Assignment (see "Linking a stage to its
+  Assignment" below) is still a manual admin action — closing an
+  Assignment now auto-advances the *linked* stage (see "Auto-advancing
+  on Assignment closure"), but nothing creates the link in the first
+  place, and nothing creates or closes an Assignment on the plan's
+  behalf either. An admin still has to connect a freshly-created
+  Assignment to the right stage by hand.
 
 ### Rotation Plan (2026-09-12, same day)
 
@@ -318,6 +319,43 @@ always above. Caught by a Playwright screenshot of the Agent's own page
 after linking an assignment, not by any unit test — the math was correct
 in every automated test; the labels only visibly collided once real text
 occupied both slots.
+
+### Auto-advancing on Assignment closure (2026-09-12, same day)
+
+Closing an Assignment linked to an Enrollment's current stage now
+auto-advances that stage — the manual "Advance" button in Rotation Plans
+is still there for the unlinked/no-Assignment case, but the common path
+(a stage has a linked Assignment, that Assignment closes) no longer needs
+it. Lives in `apps/streamlit_ui/rotation_plan_bridge.py`, not in either
+capability: `rotation_plan` still never imports `assignment`, so the one
+place allowed to know about both is the app layer that already wires
+them together. `advance_linked_stage_if_closed(services, assignment_id)`
+looks up the closed Assignment's Agent, checks whether any of their
+Enrollments has that Assignment as its *current* stage's link, and calls
+`RotationPlanService.advance_stage` if there's a next stage to move to —
+a no-op (not an error) when the Assignment isn't linked to anything, or
+was already the plan's last stage.
+
+Called after all three ways an Assignment can close: a Manager's normal
+close, a Manager's withdrawal, and the Functional Owner's manager-handoff
+bulk close (looping once per closed Assignment, since that action closes
+a whole team's worth at once). Deliberately advances on *any* closure
+reason, not just `"completed"` — the stage is over either way, whatever
+the reason; only whether the Agent scored well is reason-dependent, and
+that's an separate, already-existing concern (`ClosureRecord`).
+Failures inside the bridge are swallowed rather than raised: an
+auto-advance is a convenience, and it must never turn an otherwise-
+successful Assignment closure into a visible error for the person who
+just closed it.
+
+New `apps/streamlit_ui/test_rotation_plan_bridge.py` (same bare-script
+convention as `test_bulk_import.py`) covers: a linked stage advancing on
+closure, closing an Assignment linked to the *last* stage doing nothing,
+and closing an Assignment with no plan link at all doing nothing. Verified
+end to end with Playwright too: linked Casey's Platform-Team stage to her
+Alex assignment, withdrew that assignment as Alex, and confirmed Casey's
+own journey curve had already moved to Data Team with no admin action in
+between.
 
 ### Bulk Setup + a real Streamlit ordering bug (2026-09-12, same day)
 

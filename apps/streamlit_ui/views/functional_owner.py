@@ -10,6 +10,7 @@ from rbac_scope import Viewer
 import bulk_import
 import journey_curve
 import org_tree
+import rotation_plan_bridge
 from party_helpers import disambiguate_labels, safe_get_name
 from rotation_plan.domain import AlreadyEnrolled, RotationPlanNotFound
 
@@ -255,15 +256,19 @@ def _manager_handoff(services, viewer: Viewer) -> None:
 
     if submitted:
         departing = manager_labels[departing_label]
-        active_count = len(
-            [a for a in services.scope.list_visible_assignments(viewer) if a.manager_id == departing.id and a.state.value == "active"]
-        )
-        if active_count == 0:
+        closing_ids = [
+            a.id
+            for a in services.scope.list_visible_assignments(viewer)
+            if a.manager_id == departing.id and a.state.value == "active"
+        ]
+        if not closing_ids:
             st.info(f"{departing.display_name} has no active Agents to reassign.")
         else:
             new_assignments = services.scope.reassign_all_from_departing_manager(
                 viewer, departing.id, remaining[new_label].id, notes=notes or None
             )
+            for assignment_id in closing_ids:
+                rotation_plan_bridge.advance_linked_stage_if_closed(services, assignment_id)
             st.success(f"Reassigned {len(new_assignments)} Agent(s).")
             st.rerun()
 

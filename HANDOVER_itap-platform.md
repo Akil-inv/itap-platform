@@ -262,6 +262,24 @@ Last updated: 2026-09-11
   halo and flipping "You are here" to the opposite side from the node's
   own labels. See "Linking a stage to its Assignment" in
   `docs/architecture.md`.
+- Auto-advance on Assignment closure (2026-09-12, same day): closing an
+  Assignment linked to an Enrollment's current stage now advances that
+  stage automatically — no admin click needed for the common case. New
+  `apps/streamlit_ui/rotation_plan_bridge.py`
+  (`advance_linked_stage_if_closed`) is the one place allowed to know
+  about both `assignment` and `rotation_plan`; called after all three
+  ways an Assignment can close (Manager's normal close, Manager's
+  withdrawal, Functional Owner's manager handoff — looping once per
+  closed Assignment there). No-op, not an error, when the Assignment
+  isn't linked to anything or was already the plan's last stage; any
+  internal failure is swallowed so it can never turn a successful
+  closure into a visible error. New
+  `apps/streamlit_ui/test_rotation_plan_bridge.py` (same bare-script
+  convention as `test_bulk_import.py`) covers all three cases. Verified
+  end to end with Playwright: linked Casey's stage to her Assignment,
+  withdrew it as her Manager, confirmed her own journey curve had
+  already moved to the next stage. See "Auto-advancing on Assignment
+  closure" in `docs/architecture.md`.
 
 ### In Progress
 

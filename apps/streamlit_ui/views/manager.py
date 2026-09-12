@@ -8,6 +8,7 @@ from assignment.rules import TransitionDenied
 from party_identity.domain import Party
 from rbac_scope import PermissionDenied, Viewer
 
+import rotation_plan_bridge
 from journey import render_stepper, stage_index
 from party_helpers import safe_get_name
 
@@ -94,6 +95,9 @@ def _assignment_journey(services, viewer: Viewer, assignment) -> None:
                             services.assignment_service.close_assignment(
                                 assignment.id, objective_score=score, subjective_notes=notes
                             )
+                            rotation_plan_bridge.advance_linked_stage_if_closed(
+                                services, assignment.id
+                            )
                             st.success("Closed.")
                             st.rerun()
                         except ACTIONABLE_ERRORS as e:
@@ -110,6 +114,9 @@ def _assignment_journey(services, viewer: Viewer, assignment) -> None:
                         try:
                             services.assignment_service.withdraw_assignment(
                                 assignment.id, notes=notes or None
+                            )
+                            rotation_plan_bridge.advance_linked_stage_if_closed(
+                                services, assignment.id
                             )
                             st.success("Withdrawn.")
                             st.rerun()
