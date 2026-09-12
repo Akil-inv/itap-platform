@@ -30,7 +30,7 @@ ROLE_SECTIONS = [
     (
         Role.MANAGER,
         ROLE_DISPLAY_NAME[Role.MANAGER],
-        "Sets goals, tracks and closes out the interns on their team.",
+        "Sets goals, tracks and closes out the associates on their team.",
         "#16707F",
     ),
     (
@@ -87,7 +87,7 @@ def render(services) -> None:
             '<div class="itap-pitch-eyebrow">One address, three experiences</div>'
             "<h1>Sign in once. ITAP shows you your own program.</h1>"
             '<p class="lede">There\'s a single sign-in — no separate admin, '
-            "manager, or intern sites to remember. What you see once "
+            "manager, or associate sites to remember. What you see once "
             "you're in is decided entirely by your role.</p>"
             "</div>",
             unsafe_allow_html=True,
@@ -145,9 +145,9 @@ def render(services) -> None:
                 col1, col2 = st.columns(2)
                 with col1:
                     with st.form("home_new_agent"):
-                        name = st.text_input("Intern name")
+                        name = st.text_input("Associate name")
                         email = st.text_input("Email (optional)", key="home_agent_email")
-                        if st.form_submit_button("Create Intern") and name:
+                        if st.form_submit_button("Create Associate") and name:
                             attrs = {"email": email} if email else {}
                             services.party_repo.add(
                                 Party(party_type="agent", display_name=name, attributes=attrs)

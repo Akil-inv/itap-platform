@@ -59,7 +59,7 @@ def _all_assignments(services, viewer: Viewer) -> None:
         return
     rows = [
         {
-            "Agent": safe_get_name(services.party_repo, a.agent_id),
+            "Associate": safe_get_name(services.party_repo, a.agent_id),
             "Manager": safe_get_name(services.party_repo, a.manager_id),
             "Start": a.start_date,
             "End": a.end_date,
@@ -131,15 +131,15 @@ def _onboard_and_assign(services) -> None:
         col1, col2 = st.columns(2)
         with col1:
             with st.form("new_agent"):
-                name = st.text_input("New Agent name")
+                name = st.text_input("New Associate name")
                 email = st.text_input("Email (optional)", key="owner_agent_email")
-                submitted = st.form_submit_button("Create Agent")
+                submitted = st.form_submit_button("Create Associate")
                 if submitted and name:
                     attrs = {"email": email} if email else {}
                     services.party_repo.add(
                         Party(party_type="agent", display_name=name, attributes=attrs)
                     )
-                    st.success(f"Agent '{name}' created.")
+                    st.success(f"Associate '{name}' created.")
                     st.rerun()
         with col2:
             with st.form("new_manager"):
@@ -159,14 +159,14 @@ def _onboard_and_assign(services) -> None:
         agents = services.party_repo.list_by_type("agent")
         managers = services.party_repo.list_by_type("manager")
         if not agents or not managers:
-            st.info("Create at least one Agent and one Manager first.")
+            st.info("Create at least one Associate and one Manager first.")
             return
 
         agent_labels = disambiguate_labels(agents)
         manager_labels = disambiguate_labels(managers)
 
         with st.form("new_assignment"):
-            agent_choice = st.selectbox("Agent", list(agent_labels.keys()))
+            agent_choice = st.selectbox("Associate", list(agent_labels.keys()))
             manager_choice = st.selectbox("Manager", list(manager_labels.keys()))
             start = st.date_input("Start date", value=date.today())
             has_end = st.checkbox("Set an end date now")
@@ -184,7 +184,7 @@ def _onboard_and_assign(services) -> None:
                     st.rerun()
                 except DuplicateAssignment:
                     st.error(
-                        "This Agent already has an active assignment with this "
+                        "This Associate already has an active assignment with this "
                         "Manager — close it first, or pick a different Manager."
                     )
                 except ValueError as e:
@@ -200,7 +200,7 @@ def _overdue(services, viewer: Viewer) -> None:
     else:
         rows = [
             {
-                "Agent": safe_get_name(services.party_repo, a.agent_id),
+                "Associate": safe_get_name(services.party_repo, a.agent_id),
                 "Manager": safe_get_name(services.party_repo, a.manager_id),
                 "Start": a.start_date,
             }
@@ -217,7 +217,7 @@ def _overdue(services, viewer: Viewer) -> None:
     else:
         rows = [
             {
-                "Agent": safe_get_name(services.party_repo, a.agent_id),
+                "Associate": safe_get_name(services.party_repo, a.agent_id),
                 "Manager": safe_get_name(services.party_repo, a.manager_id),
                 "Start": a.start_date,
             }
@@ -235,7 +235,7 @@ def _manager_handoff(services, viewer: Viewer) -> None:
     st.caption(
         "For when a Manager leaves: close every one of their active "
         "Assignments (no score — this isn't a performance assessment) "
-        "and hand each Agent to a new Manager in one action."
+        "and hand each Associate to a new Manager in one action."
     )
     managers = services.party_repo.list_by_type("manager")
     if len(managers) < 2:
@@ -262,20 +262,20 @@ def _manager_handoff(services, viewer: Viewer) -> None:
             if a.manager_id == departing.id and a.state.value == "active"
         ]
         if not closing_ids:
-            st.info(f"{departing.display_name} has no active Agents to reassign.")
+            st.info(f"{departing.display_name} has no active Associates to reassign.")
         else:
             new_assignments = services.scope.reassign_all_from_departing_manager(
                 viewer, departing.id, remaining[new_label].id, notes=notes or None
             )
             for assignment_id in closing_ids:
                 rotation_plan_bridge.advance_linked_stage_if_closed(services, assignment_id)
-            st.success(f"Reassigned {len(new_assignments)} Agent(s).")
+            st.success(f"Reassigned {len(new_assignments)} Associate(s).")
             st.rerun()
 
 
 def _rotation_plans(services) -> None:
     st.caption(
-        "A fixed, named path of stages an Intern rotates through — so "
+        "A fixed, named path of stages an Associate rotates through — so "
         "their next placement isn't a one-off decision each time. "
         "Stages are tracks/labels (e.g. \"Data Team\"), not a specific "
         "Manager — the Manager for each stage still comes from a normal "
@@ -307,15 +307,15 @@ def _rotation_plans(services) -> None:
         return
 
     plan_labels = {p.name: p for p in plans}
-    with st.expander("Enroll an intern"):
+    with st.expander("Enroll an associate"):
         agents = services.party_repo.list_by_type("agent")
         if not agents:
-            st.info("Onboard at least one Intern first.")
+            st.info("Onboard at least one Associate first.")
         else:
             agent_labels = disambiguate_labels(agents)
             with st.form("enroll_in_plan"):
                 plan_choice = st.selectbox("Plan", list(plan_labels.keys()))
-                agent_choice = st.selectbox("Intern", list(agent_labels.keys()))
+                agent_choice = st.selectbox("Associate", list(agent_labels.keys()))
                 if st.form_submit_button("Enroll"):
                     try:
                         services.rotation_plan_service.enroll(
@@ -324,7 +324,7 @@ def _rotation_plans(services) -> None:
                         st.success(f"Enrolled {agent_choice} in '{plan_choice}'.")
                         st.rerun()
                     except AlreadyEnrolled:
-                        st.error("This Intern is already enrolled in this plan.")
+                        st.error("This Associate is already enrolled in this plan.")
 
     managers = services.party_repo.list_by_type("manager")
     manager_labels = disambiguate_labels(managers)
@@ -339,7 +339,7 @@ def _rotation_plans(services) -> None:
 
             with st.expander("Default manager per stage (auto-creates the next Assignment)"):
                 st.caption(
-                    "When an Intern's stage advances — because the linked "
+                    "When an Associate's stage advances — because the linked "
                     "Assignment closed — a stage with a default Manager "
                     "here gets a fresh Assignment created and linked "
                     "automatically. Leave a stage as \"none\" to keep "
@@ -445,7 +445,7 @@ def _rotation_plans(services) -> None:
                                     st.rerun()
                         else:
                             st.caption(
-                                "No active Assignment for this Intern to link yet — "
+                                "No active Assignment for this Associate to link yet — "
                                 "create one in Onboard & Assign."
                             )
 
@@ -462,7 +462,7 @@ def _rotation_plans(services) -> None:
 
 def _bulk_setup(services) -> None:
     st.caption(
-        "Upload an Excel workbook to set up Agents, Managers, and "
+        "Upload an Excel workbook to set up Associates, Managers, and "
         "Assignments — with optional goals and scoring criteria — in one "
         "pass. Nothing is created until you review the preview and "
         "confirm."
@@ -513,7 +513,7 @@ def _bulk_setup(services) -> None:
 
     st.write(
         f"Found **{len(parsed.admins)}** Admin row(s), "
-        f"**{len(parsed.agents)}** Agent row(s), "
+        f"**{len(parsed.associates)}** Associate row(s), "
         f"**{len(parsed.managers)}** Manager row(s), "
         f"**{len(parsed.assignments)}** Assignment row(s)."
     )
@@ -521,9 +521,9 @@ def _bulk_setup(services) -> None:
         if parsed.admins:
             st.markdown("**Admins**")
             st.dataframe(parsed.admins, width='stretch')
-        if parsed.agents:
-            st.markdown("**Agents**")
-            st.dataframe(parsed.agents, width='stretch')
+        if parsed.associates:
+            st.markdown("**Associates**")
+            st.dataframe(parsed.associates, width='stretch')
         if parsed.managers:
             st.markdown("**Managers**")
             st.dataframe(parsed.managers, width='stretch')
@@ -552,10 +552,10 @@ def _render_import_result(result) -> None:
 def _consolidated_scores(services, viewer: Viewer) -> None:
     agents = services.party_repo.list_by_type("agent")
     if not agents:
-        st.write("No agents yet.")
+        st.write("No associates yet.")
         return
     labels = disambiguate_labels(agents)
-    choice = st.selectbox("Agent", list(labels.keys()))
+    choice = st.selectbox("Associate", list(labels.keys()))
     agent = labels[choice]
     score = services.scope.consolidated_score(viewer, agent.id)
     if score is None:

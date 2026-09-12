@@ -10,5 +10,5 @@ from rbac_scope import Role
 ROLE_DISPLAY_NAME = {
     Role.FUNCTIONAL_OWNER: "ITAP Admin",
     Role.MANAGER: "Line Manager",
-    Role.AGENT: "Intern / Staff",
+    Role.AGENT: "Associate",
 }

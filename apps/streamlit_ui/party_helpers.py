@@ -5,10 +5,17 @@ from uuid import UUID
 
 from party_identity.domain import Party
 from party_identity.ports import PartyRepo
+from rbac_scope import Role
+
+from role_labels import ROLE_DISPLAY_NAME
 
 
 def party_label(party: Party) -> str:
-    return f"{party.display_name} ({party.party_type})"
+    try:
+        role_name = ROLE_DISPLAY_NAME[Role(party.party_type)]
+    except ValueError:
+        role_name = party.party_type
+    return f"{party.display_name} ({role_name})"
 
 
 def disambiguate_labels(parties: list[Party], label_fn=party_label) -> dict[str, Party]:

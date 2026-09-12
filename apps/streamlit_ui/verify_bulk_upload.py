@@ -15,18 +15,18 @@ UPLOAD_PATH = "/tmp/itap_bulk_upload_test.xlsx"
 
 os.makedirs(OUT_DIR, exist_ok=True)
 
-# Build a small fresh workbook: a new Agent + Manager + Assignment with
+# Build a small fresh workbook: a new Associate + Manager + Assignment with
 # goals and criteria, none of which exist in the seeded demo data.
 wb = Workbook()
 wb.remove(wb.active)
-ws = wb.create_sheet("Agents")
+ws = wb.create_sheet("Associates")
 ws.append(["name", "email"])
 ws.append(["Riya", "riya@example.com"])
 ws = wb.create_sheet("Managers")
 ws.append(["name", "email"])
 ws.append(["Sam", ""])
 ws = wb.create_sheet("Assignments")
-ws.append(["agent_name", "manager_name", "start_date", "end_date", "goals", "criteria"])
+ws.append(["associate_name", "manager_name", "start_date", "end_date", "goals", "criteria"])
 ws.append(["Riya", "Sam", "2026-01-01", "", "Ship the reporting dashboard", "Communication; Ownership"])
 wb.save(UPLOAD_PATH)
 

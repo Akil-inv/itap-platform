@@ -344,6 +344,34 @@ Last updated: 2026-09-11
   data itself stays correct (confirmed via All Assignments/Overdue), it's
   just a rendering limit not built for a cohort this size yet.
 
+- Agent → Associate rename (2026-09-12, same day): the user asked for
+  the product-facing role name "Agent" to read "Associate" everywhere in
+  the UI and the Bulk Setup Excel template. Renamed every user-visible
+  string — `role_labels.py`'s `ROLE_DISPLAY_NAME`, `home.py`, `app.py`,
+  `views/manager.py`, `views/functional_owner.py` (labels, captions,
+  dataframe columns, error/success messages) — plus the Bulk Setup
+  template's `Agents` sheet → `Associates` and its `agent_name` column →
+  `associate_name` (`bulk_import.py`, `ParsedWorkbook.agents` →
+  `.associates`, `test_bulk_import.py` updated to match). Internal
+  domain vocabulary is untouched by design, per this repo's
+  hexagonal/ports-and-adapters convention (see `docs/architecture.md`):
+  `party_type="agent"`, `Assignment.agent_id`,
+  `AssignmentRepo.list_by_agent`, the `views/agent.py` module name, and
+  the "ITAP" product name/tagline all stay as-is. A case-insensitive
+  grep sweep (`grep -rniE "agent|intern"`) caught one miss a
+  case-sensitive pass didn't (`manager.py`'s lowercase `"Goals (agreed
+  with the agent)"`). Playwright verification surfaced a second-order
+  bug: `party_helpers.party_label()` built dropdown labels from the raw
+  internal `party_type` string, so "Casey (agent)" kept showing in every
+  person-picker even after the display strings were renamed — fixed by
+  having it look up `ROLE_DISPLAY_NAME[Role(party.party_type)]` instead,
+  with a fallback to the raw string. Re-verified via a fresh screenshot
+  showing "Casey (Associate)". The sample dataset workbook handed to the
+  user earlier used the old `Agents`/`agent_name` schema and was
+  regenerated and re-sent under the new `Associates`/`associate_name`
+  schema so it still imports cleanly. `smoke_test.py`,
+  `test_bulk_import.py`, and `test_rotation_plan_bridge.py` all pass.
+
 ### In Progress
 
 - Nothing mid-flight; the party_identity + assignment + rbac_scope +

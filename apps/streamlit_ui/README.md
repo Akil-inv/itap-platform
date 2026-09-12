@@ -19,7 +19,7 @@ drives page titles. Once signed in, a persistent header (`app.py`) shows
 enforcement) changes.
 
 `role_labels.py` holds the product-facing name for each role — "ITAP
-Admin" / "Line Manager" / "Intern / Staff" — shared between `home.py`'s
+Admin" / "Line Manager" / "Associate" — shared between `home.py`'s
 sign-in card and `app.py`'s header chip so both call a role by the same
 name. Display-only: the underlying `Role` enum values
 (`functional_owner`/`manager`/`agent`) are unchanged everywhere else.
@@ -38,7 +38,7 @@ underlying service calls still have no auth of their own).
 ## Bulk Setup (`bulk_import.py`)
 
 Functional Owner's "Bulk Setup" tab: upload an Excel workbook to create
-ITAP Admins, Agents, Managers, and Assignments (with optional goals +
+ITAP Admins, Associates, Managers, and Assignments (with optional goals +
 scoring criteria) in one pass, instead of one form submission per row. A
 two-phase flow — **parse then confirm** — so a bad file can never
 silently create garbage: nothing is written until you've seen the
@@ -46,11 +46,11 @@ preview and clicked Confirm.
 
 **Template** (`Download template (.xlsx)` button, generated on the fly,
 no bundled file to keep in sync):
-- `Admins` / `Agents`: `name` (required), `email` (optional)
+- `Admins` / `Associates`: `name` (required), `email` (optional)
 - `Managers`: `name` (required), `email` (optional), `function`
   (optional free-text grouping label, e.g. "Engineering" — stored as
   `Party.attributes["function"]`; nothing else in the app reads it yet)
-- `Assignments`: `agent_name`, `manager_name`, `start_date` (required);
+- `Assignments`: `associate_name`, `manager_name`, `start_date` (required);
   `end_date`, `goals`, `criteria` (optional). `criteria` is
   semicolon-separated (e.g. `Communication; Technical Skill; Ownership`)
   — matches `GoalSetting.criteria`, the lightweight scoring-rubric
@@ -59,7 +59,7 @@ no bundled file to keep in sync):
   not validated against; documents what a criterion means without
   forcing every row to repeat it.
 
-**Idempotent re-upload**: Agents/Managers are matched against existing
+**Idempotent re-upload**: Associates/Managers are matched against existing
 Parties by email first, then by exact name if unambiguous — re-uploading
 the same workbook (e.g. after adding a new row) reuses existing people
 instead of creating duplicates, and a row that would duplicate an active
@@ -83,9 +83,9 @@ Onboarding forms (`home.py`'s setup expander, and the Functional Owner's
 `Party.attributes["email"]` — the field a future SSO integration would
 match an incoming identity against. Nothing reads it yet.
 
-Every person-picker (sign-in buttons, Agent/Manager dropdowns) runs
+Every person-picker (sign-in buttons, Associate/Manager dropdowns) runs
 through `party_helpers.disambiguate_labels`, which appends a short id
-suffix only when two people share a display name — otherwise two Agents
+suffix only when two people share a display name — otherwise two Associates
 both named "Casey" would be indistinguishable in every selection UI.
 
 ## Running locally
@@ -111,7 +111,7 @@ export DATABASE_URL=postgresql://user:pass@host:5432/itap
 gate — see `capabilities/assignment/src/assignment/rules_config.py`.
 
 On first run, with no Parties yet, the app offers a "Seed demo data"
-button (1 Functional Owner, 2 Managers, 2 Agents, 3 Assignments — Casey
+button (1 Functional Owner, 2 Managers, 2 Associates, 3 Assignments — Casey
 is deliberately double-booked to Alex and Bailey, to demo cross-team
 bifurcation) so there is something to click through immediately.
 
@@ -122,7 +122,7 @@ card/typography theme) and defines the `.itap-stepper` component styles.
 `journey.py` reads an Assignment's existing state (no new states added —
 this is a pure presentation-layer read of the State pattern already in
 `capabilities/assignment`) and renders it as a 3-stage stepper: Goal
-Setting → Active → Closed. Both Manager and Agent per-assignment panels
+Setting → Active → Closed. Both Manager and Associate per-assignment panels
 use this so each assignment reads as a journey rather than a flat pile of
 unordered forms.
 
@@ -134,12 +134,12 @@ default output read as a technical diagram, not a product visual, and
 this needs zero external/CDN dependency (relevant for CML deployment,
 where outbound network access to a JS CDN is one of the open platform
 questions). It renders the **whole current org** — Functional Owner(s) ->
-Managers -> Agents, three tiers, not just a Manager-Agent pair — using
+Managers -> Associates, three tiers, not just a Manager-Associate pair — using
 rounded cards, soft drop shadows, and smooth cubic-bezier connectors.
 Hovering a card highlights its connections and dims the rest (plain
 inline JS, no library). Shows active assignments only — this is "who
 reports to whom right now," not a history view (that's the "All
-Assignments" tab). An Agent with concurrent, cross-team assignments gets
+Assignments" tab). An Associate with concurrent, cross-team assignments gets
 more than one incoming edge — it's a graph, not a strict tree, by design.
 
 ## Lifecycle beyond normal completion
@@ -150,19 +150,19 @@ paths exist, neither scored and neither gated by minimum-elapsed or
 goal-setting — these are organizational events, not performance
 assessments:
 
-- **Withdraw** (Manager's per-assignment "Withdraw" tab) — the Agent
+- **Withdraw** (Manager's per-assignment "Withdraw" tab) — the Associate
   left the program or this rotation early.
 - **Manager Handoff** (Functional Owner's "Manager Handoff" tab,
   central-team-only via RBAC) — a Manager is leaving; every one of their
   active Assignments is closed (`closed_reason="manager_departed"`) and
-  a fresh Assignment opens for each Agent under the new Manager in one
+  a fresh Assignment opens for each Associate under the new Manager in one
   action.
 
 Both record a free-text `closure_note` instead of a `ClosureRecord`.
 
 Note: the earlier Manager-facing "Swap to new manager" (self-service,
 scored) was removed — it conflicted with the spec ("central team can
-swap them"), letting a Manager unilaterally hand an Agent to whichever
+swap them"), letting a Manager unilaterally hand an Associate to whichever
 peer they chose. The equivalent normal-rotation flow is now: Manager
 closes normally (Close assignment tab, scored) once tenure is complete;
 Functional Owner creates the next Assignment via "Onboard & Assign" —
@@ -171,13 +171,13 @@ both already-existing primitives, no new code needed for that case.
 ## Rotation Plans (`journey_curve.py`, `capabilities/rotation_plan`)
 
 A fixed, named path of stages (e.g. "Platform Team" -> "Data Team" ->
-"Product Team") an Agent is enrolled into, so their next placement isn't
+"Product Team") an Associate is enrolled into, so their next placement isn't
 a one-off decision each time. Functional Owner's "Rotation Plans" tab:
 create a plan (name, semicolon-separated stages, weeks/stage), enroll an
-Agent, and see the whole enrolled cohort plotted on one shared curve —
+Associate, and see the whole enrolled cohort plotted on one shared curve —
 plus a manual "Advance" action per person (there's no automatic link
 between closing an Assignment and advancing a plan stage yet, see
-`docs/architecture.md`). The Agent's "My Journey" page shows their own
+`docs/architecture.md`). The Associate's "My Journey" page shows their own
 plan, if enrolled, as a curve with a "you are here" marker, above their
 existing per-Assignment cards.
 
@@ -190,7 +190,7 @@ A stage is a label/track, not a specific Manager — the Manager for a
 given stage still comes from a normal Assignment. `Enrollment.
 stage_assignments` records which Assignment covers which stage (by id
 only), filled in by an admin from each enrollment row's "Link an active
-Assignment to this stage" control. Once linked, the Agent's own journey
+Assignment to this stage" control. Once linked, the Associate's own journey
 curve shows the covering Manager's name under each reached stage — and
 closing that Assignment (a normal close, a withdrawal, or a manager
 handoff) auto-advances the stage to the next one
@@ -211,7 +211,7 @@ to whatever gets created by hand.
 `smoke_test.py` is not part of the `pytest` suites under `capabilities/`
 — it uses `streamlit.testing.v1.AppTest` to run the wired-together app
 headlessly and exercise the goal-setting form end to end (manager records
-goals → agent sees them via the RBAC-scoped view). Run it after any change
+goals → associate sees them via the RBAC-scoped view). Run it after any change
 to `app.py`, `services.py`, or `views/`:
 
 ```bash

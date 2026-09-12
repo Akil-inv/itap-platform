@@ -64,7 +64,7 @@ all_parties = (
 if not all_parties:
     st.title("Welcome to ITAP")
     st.write(
-        "No Agents, Managers, or Functional Owners exist yet. Click "
+        "No Associates, Managers, or Functional Owners exist yet. Click "
         "below to create a small demo world, or onboard the first "
         "Functional Owner directly against the database to get started "
         "for real."

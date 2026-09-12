@@ -1,6 +1,6 @@
-"""Bulk baseline setup from an Excel workbook: Agents, Managers,
-Assignments (with optional goals + scoring criteria), and a Criteria
-Library reference sheet.
+"""Bulk baseline setup from an Excel workbook: Admins, Associates,
+Managers, Assignments (with optional goals + scoring criteria), and a
+Criteria Library reference sheet.
 
 Deliberately app-layer, not domain: parsing spreadsheets isn't a
 capability concern. This module's job ends at calling AssignmentService/
@@ -26,19 +26,19 @@ from party_identity.domain import Party
 from assignment.domain import DuplicateAssignment
 
 SHEET_ADMINS = "Admins"
-SHEET_AGENTS = "Agents"
+SHEET_ASSOCIATES = "Associates"
 SHEET_MANAGERS = "Managers"
 SHEET_ASSIGNMENTS = "Assignments"
 SHEET_CRITERIA_LIBRARY = "Criteria Library"
 
 ADMIN_COLUMNS = ["name", "email"]
-AGENT_COLUMNS = ["name", "email"]
+ASSOCIATE_COLUMNS = ["name", "email"]
 # "function" is optional (e.g. "Engineering", "Design") — a grouping label
 # stored on Party.attributes["function"], not a separate concept the
 # rest of the app enforces or reads yet.
 MANAGER_COLUMNS = ["name", "email", "function"]
 ASSIGNMENT_COLUMNS = [
-    "agent_name",
+    "associate_name",
     "manager_name",
     "start_date",
     "end_date",
@@ -49,7 +49,7 @@ CRITERIA_LIBRARY_COLUMNS = ["name", "description"]
 
 _EXAMPLE_ROWS = {
     SHEET_ADMINS: [["Priya", "priya@example.com"]],
-    SHEET_AGENTS: [["Casey", "casey@example.com"], ["Dana", ""]],
+    SHEET_ASSOCIATES: [["Casey", "casey@example.com"], ["Dana", ""]],
     SHEET_MANAGERS: [["Alex", "alex@example.com", "Engineering"], ["Bailey", "", "Design"]],
     SHEET_ASSIGNMENTS: [
         [
@@ -74,7 +74,7 @@ def build_template_workbook() -> bytes:
     wb.remove(wb.active)
     sheets = {
         SHEET_ADMINS: ADMIN_COLUMNS,
-        SHEET_AGENTS: AGENT_COLUMNS,
+        SHEET_ASSOCIATES: ASSOCIATE_COLUMNS,
         SHEET_MANAGERS: MANAGER_COLUMNS,
         SHEET_ASSIGNMENTS: ASSIGNMENT_COLUMNS,
         SHEET_CRITERIA_LIBRARY: CRITERIA_LIBRARY_COLUMNS,
@@ -98,7 +98,7 @@ def build_template_workbook() -> bytes:
 @dataclass
 class ParsedWorkbook:
     admins: list[dict[str, Any]] = field(default_factory=list)
-    agents: list[dict[str, Any]] = field(default_factory=list)
+    associates: list[dict[str, Any]] = field(default_factory=list)
     managers: list[dict[str, Any]] = field(default_factory=list)
     assignments: list[dict[str, Any]] = field(default_factory=list)
     criteria_library: list[dict[str, Any]] = field(default_factory=list)
@@ -175,11 +175,11 @@ def parse_workbook(file) -> ParsedWorkbook:
             for r in admin_rows
         ]
 
-    agent_rows, errs = _sheet_rows(sheets, SHEET_AGENTS, ["name"])
+    associate_rows, errs = _sheet_rows(sheets, SHEET_ASSOCIATES, ["name"])
     result.sheet_errors += errs
-    result.agents = [
+    result.associates = [
         {"row": r["_row_number"], "name": _clean_str(r.get("name")), "email": _clean_str(r.get("email"))}
-        for r in agent_rows
+        for r in associate_rows
     ]
 
     manager_rows, errs = _sheet_rows(sheets, SHEET_MANAGERS, ["name"])
@@ -195,14 +195,14 @@ def parse_workbook(file) -> ParsedWorkbook:
     ]
 
     assignment_rows, errs = _sheet_rows(
-        sheets, SHEET_ASSIGNMENTS, ["agent_name", "manager_name", "start_date"]
+        sheets, SHEET_ASSIGNMENTS, ["associate_name", "manager_name", "start_date"]
     )
     result.sheet_errors += errs
     for r in assignment_rows:
         result.assignments.append(
             {
                 "row": r["_row_number"],
-                "agent_name": _clean_str(r.get("agent_name")),
+                "associate_name": _clean_str(r.get("associate_name")),
                 "manager_name": _clean_str(r.get("manager_name")),
                 "start_date": _parse_date(r.get("start_date")),
                 "end_date": _parse_date(r.get("end_date")),
@@ -290,7 +290,7 @@ def apply_import(services, parsed: ParsedWorkbook) -> ImportResult:
         _find_or_create_party(
             services.party_repo, "functional_owner", a["name"], a["email"], results, a["row"]
         )
-    for a in parsed.agents:
+    for a in parsed.associates:
         _find_or_create_party(services.party_repo, "agent", a["name"], a["email"], results, a["row"])
     for m in parsed.managers:
         extra = {"function": m["function"]} if m.get("function") else None
@@ -298,14 +298,14 @@ def apply_import(services, parsed: ParsedWorkbook) -> ImportResult:
             services.party_repo, "manager", m["name"], m["email"], results, m["row"], extra
         )
 
-    agents_by_name = {p.display_name: p for p in services.party_repo.list_by_type("agent")}
+    associates_by_name = {p.display_name: p for p in services.party_repo.list_by_type("agent")}
     managers_by_name = {p.display_name: p for p in services.party_repo.list_by_type("manager")}
 
     for row in parsed.assignments:
-        agent = agents_by_name.get(row["agent_name"])
+        associate = associates_by_name.get(row["associate_name"])
         manager = managers_by_name.get(row["manager_name"])
-        if agent is None:
-            results.append(RowResult(SHEET_ASSIGNMENTS, row["row"], "error", f"Unknown agent {row['agent_name']!r}"))
+        if associate is None:
+            results.append(RowResult(SHEET_ASSIGNMENTS, row["row"], "error", f"Unknown associate {row['associate_name']!r}"))
             continue
         if manager is None:
             results.append(RowResult(SHEET_ASSIGNMENTS, row["row"], "error", f"Unknown manager {row['manager_name']!r}"))
@@ -316,7 +316,7 @@ def apply_import(services, parsed: ParsedWorkbook) -> ImportResult:
 
         try:
             assignment = services.assignment_service.create_assignment(
-                agent_id=agent.id,
+                agent_id=associate.id,
                 manager_id=manager.id,
                 start_date=row["start_date"],
                 end_date=row["end_date"],
@@ -325,7 +325,7 @@ def apply_import(services, parsed: ParsedWorkbook) -> ImportResult:
             results.append(
                 RowResult(
                     SHEET_ASSIGNMENTS, row["row"], "skipped",
-                    f"{row['agent_name']} already has an active assignment with {row['manager_name']}",
+                    f"{row['associate_name']} already has an active assignment with {row['manager_name']}",
                 )
             )
             continue
@@ -336,7 +336,7 @@ def apply_import(services, parsed: ParsedWorkbook) -> ImportResult:
         results.append(
             RowResult(
                 SHEET_ASSIGNMENTS, row["row"], "created",
-                f"{row['agent_name']} -> {row['manager_name']}",
+                f"{row['associate_name']} -> {row['manager_name']}",
             )
         )
         if row["goals"] or row["criteria"]:

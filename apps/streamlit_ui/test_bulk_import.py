@@ -19,11 +19,11 @@ assert template_bytes, "Template should not be empty"
 parsed = bulk_import.parse_workbook(io.BytesIO(template_bytes))
 assert not parsed.sheet_errors, f"Template itself should parse cleanly: {parsed.sheet_errors}"
 assert len(parsed.admins) == 1, parsed.admins
-assert len(parsed.agents) == 2, parsed.agents
+assert len(parsed.associates) == 2, parsed.associates
 assert len(parsed.managers) == 2, parsed.managers
 assert parsed.managers[0]["function"] == "Engineering", parsed.managers
 assert len(parsed.assignments) == 1, parsed.assignments
-assert parsed.assignments[0]["agent_name"] == "Casey"
+assert parsed.assignments[0]["associate_name"] == "Casey"
 assert parsed.assignments[0]["manager_name"] == "Alex"
 assert parsed.assignments[0]["start_date"] == date(2026, 1, 1)
 assert parsed.assignments[0]["criteria"] == ["Communication", "Technical Skill", "Ownership"]
@@ -36,7 +36,7 @@ import openpyxl
 
 wb = openpyxl.Workbook()
 wb.remove(wb.active)
-ws = wb.create_sheet("Agents")
+ws = wb.create_sheet("Associates")
 ws.append(["full_name"])  # wrong column name
 ws.append(["Casey"])
 buf = io.BytesIO()
@@ -54,7 +54,7 @@ services = get_services()
 
 result = bulk_import.apply_import(services, parsed)
 counts = result.counts()
-assert counts.get("created", 0) >= 5, counts  # 1 admin + 2 agents + 2 managers + 1 assignment at minimum
+assert counts.get("created", 0) >= 5, counts  # 1 admin + 2 associates + 2 managers + 1 assignment at minimum
 assert not any(r.status == "error" for r in result.row_results), result.row_results
 
 admins = {p.display_name for p in services.party_repo.list_by_type("functional_owner")}
@@ -78,10 +78,10 @@ print("apply_import creates agents/managers/assignments + goal setting: OK")
 
 result2 = bulk_import.apply_import(services, parsed)
 counts2 = result2.counts()
-assert counts2.get("reused", 0) == 5, counts2  # same admin/agents/managers matched, not recreated
+assert counts2.get("reused", 0) == 5, counts2  # same admin/associates/managers matched, not recreated
 assert counts2.get("skipped", 0) == 1, counts2  # duplicate active assignment
 agents_after = services.party_repo.list_by_type("agent")
-assert len(agents_after) == 2, "Re-import must not create duplicate Agents"
+assert len(agents_after) == 2, "Re-import must not create duplicate Associates"
 print("Re-import is idempotent for people, skips duplicate assignment: OK")
 
 os.remove("test_bulk_import.db")

@@ -21,7 +21,7 @@ def render(services, viewer: Viewer, current_party: Party) -> None:
 
     assignments = services.scope.list_visible_assignments(viewer)
     if not assignments:
-        st.write("No Agents currently tasked to you.")
+        st.write("No Associates currently tasked to you.")
         return
 
     for assignment in assignments:
@@ -44,7 +44,7 @@ def _assignment_journey(services, viewer: Viewer, assignment) -> None:
         if goal_setting is None:
             st.warning("No goal setting recorded yet — nothing to assess against at closure.")
             with st.form(f"goals_{assignment.id}"):
-                goals = st.text_area("Goals (agreed with the agent)")
+                goals = st.text_area("Goals (agreed with the associate)")
                 criteria_text = st.text_input(
                     "Scoring criteria (semicolon-separated, optional)",
                     placeholder="Communication; Technical Skill; Ownership",
@@ -105,7 +105,7 @@ def _assignment_journey(services, viewer: Viewer, assignment) -> None:
 
             with tab_withdraw:
                 st.caption(
-                    "For when the Agent leaves the program or this rotation early — "
+                    "For when the Associate leaves the program or this rotation early — "
                     "no score is recorded, this isn't a performance assessment."
                 )
                 with st.form(f"withdraw_{assignment.id}"):
@@ -136,7 +136,7 @@ def _assignment_journey(services, viewer: Viewer, assignment) -> None:
                     st.write(assignment.closure_note)
 
     with st.container(border=True):
-        st.markdown("**Feedback from this Agent about you**")
+        st.markdown("**Feedback from this Associate about you**")
         try:
             feedback = services.scope.list_reverse_feedback(viewer, assignment.id)
         except PermissionDenied:
