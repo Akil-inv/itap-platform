@@ -104,13 +104,25 @@ class GoalSetting:
     against at closure. Deliberately not a separate per-criterion score:
     closure still records one objective_score + subjective_notes; criteria
     just make explicit *what* that score should be judged against.
-    """
+
+    **Freeze/agree pattern (2026-09-12, associate-journey redesign, Phase
+    3):** per docs/associate_journey_redesign.md's "Goals tab" — the
+    manager and associate agree on goals verbally, offline; the goal text
+    is keyed in (editable up to this point, an upsert via
+    AssignmentService.record_goal_setting), and the manager's **Agree &
+    Freeze** action (AssignmentService.freeze_goal_setting) sets `frozen`,
+    `agreed_by` (the manager's party id) and `agreed_at`. Once frozen,
+    neither side may edit it — only an admin-opened window
+    (AssignmentService.reopen_goal_setting) clears the freeze again."""
 
     assignment_id: UUID
     goals: str
     id: UUID = field(default_factory=uuid4)
     criteria: list[str] = field(default_factory=list)
     set_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    frozen: bool = False
+    agreed_by: Optional[UUID] = None
+    agreed_at: Optional[datetime] = None
 
 
 @dataclass(frozen=True)
@@ -131,6 +143,111 @@ class ClosureRecord:
                 f"objective_score must be between {MIN_OBJECTIVE_SCORE} and "
                 f"{MAX_OBJECTIVE_SCORE}, got {self.objective_score}"
             )
+
+
+@dataclass
+class ReviewScore:
+    """Manager's Review & Scoring submission for an Assignment that is
+    still ACTIVE — distinct from ClosureRecord, which is only ever
+    written at the moment an Assignment actually transitions to CLOSED
+    (docs/associate_journey_redesign.md's "Review & Scoring tab": the
+    manager submits scores directly, no admin gate on *scoring* itself,
+    but the associated Assignment isn't closed until a separate Closure
+    *request* is later approved by an admin — see ChangeRequest below).
+
+    `criterion_scores` maps each of GoalSetting.criteria's entries to a
+    0-5 score; `objective_score` is the simple average across them (per
+    spec: "simple average — no weighting unless we decide otherwise
+    later"), computed by AssignmentService.submit_review_score rather
+    than entered directly, so the UI can't drift from "average of the
+    criteria" on its own. If no criteria were recorded, `criterion_scores`
+    may be a single ad-hoc entry (e.g. {"Overall": 4.0}) — still averaged
+    the same way, so there's exactly one code path.
+
+    Frozen immediately on submission, same override pattern as
+    GoalSetting: only AssignmentService.reopen_review_score (admin) clears
+    `frozen` so the manager can correct and resubmit."""
+
+    assignment_id: UUID
+    criterion_scores: dict[str, float]
+    objective_score: float
+    notes: str = ""
+    id: UUID = field(default_factory=uuid4)
+    submitted_by: Optional[UUID] = None
+    submitted_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    frozen: bool = True
+
+    def __post_init__(self) -> None:
+        if not self.criterion_scores:
+            raise ValueError("At least one criterion score is required")
+        for name, value in self.criterion_scores.items():
+            if not (MIN_OBJECTIVE_SCORE <= value <= MAX_OBJECTIVE_SCORE):
+                raise ValueError(
+                    f"Score for {name!r} must be between {MIN_OBJECTIVE_SCORE} and "
+                    f"{MAX_OBJECTIVE_SCORE}, got {value}"
+                )
+
+
+class RequestType(str, Enum):
+    EXTENSION = "extension"
+    CLOSURE = "closure"
+
+
+class RequestStatus(str, Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    DENIED = "denied"
+
+
+@dataclass
+class ChangeRequest:
+    """The manager-requests / admin-approves pattern
+    (docs/associate_journey_redesign.md's "Extension / Closure / Withdraw"
+    section) for the two Assignment actions that are NOT direct manager
+    actions, unlike Withdraw. Deliberately its own small record rather
+    than reusing the existing (direct, no-approval) `request_extension`/
+    `close_assignment` service calls — those keep their current behavior
+    unchanged for whatever already depends on them; this is a genuinely
+    new gated path.
+
+    `new_end_date` is set only for an EXTENSION request. Approving a
+    CLOSURE request is what actually calls `close_assignment` (using the
+    Assignment's already-submitted, frozen ReviewScore) and is what moves
+    the Agent into the Available pool per spec — not the request itself.
+
+    **Admin-approval UI is not built in this pass** — see
+    AssignmentService.approve_change_request/deny_change_request below
+    and docs/architecture.md's Phase 3 section. This dataclass and the
+    service methods around it are the request-creation half only."""
+
+    assignment_id: UUID
+    request_type: RequestType
+    requested_by: UUID
+    id: UUID = field(default_factory=uuid4)
+    new_end_date: Optional[date] = None
+    notes: str = ""
+    status: RequestStatus = RequestStatus.PENDING
+    requested_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    decided_by: Optional[UUID] = None
+    decided_at: Optional[datetime] = None
+
+
+class GoalSettingFrozen(Exception):
+    """Raised when an edit or freeze is attempted against a GoalSetting
+    that is already frozen — only AssignmentService.reopen_goal_setting
+    (admin) can clear this."""
+
+
+class ReviewScoreFrozen(Exception):
+    """Raised when a re-submission is attempted against a ReviewScore
+    that is already frozen — only AssignmentService.reopen_review_score
+    (admin) can clear this."""
+
+
+class ChangeRequestNotFound(Exception):
+    def __init__(self, request_id: UUID):
+        super().__init__(f"ChangeRequest {request_id} not found")
+        self.request_id = request_id
 
 
 @dataclass(frozen=True)

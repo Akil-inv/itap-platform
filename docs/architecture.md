@@ -627,6 +627,124 @@ pre-existing suites (`smoke_test.py`, `test_bulk_import.py`,
 `test_rotation_plan_bridge.py`, and the `catalog` package's own 69
 tests) still pass unchanged.
 
+### Associate-journey manager UI (2026-09-12, associate-journey redesign, Phase 3)
+
+Built the Manager-facing screens from `docs/associate_journey_redesign.md`'s
+"Manager flow" section: `views/manager.py` (rewritten — was previously a
+flat per-Assignment list combining goal-setting/extension/close/withdraw
+inline) is now the **My Team** entry point, and a new `views/
+manager_associate.py` is the level-2 per-Associate page it drills into,
+same "level 2 page via session_state" pattern as
+`views/associate_portfolio.py`. Admin views (Phase 2) and the Associate/
+Agent view (`views/agent.py`, still a later phase) are untouched. Model
+changes live in `capabilities/assignment` (`domain.py`, `ports.py`,
+`service.py`, both adapters) — none of this needed a new capability
+package, since goal freezing, scoring, and change-requests are all
+still properties of an *Assignment*, not a new bounded concern.
+
+- **My Team** (`views/manager.py`): **Current** / **Rolled Off** tabs,
+  scoped to `AssignmentRepo.list_by_manager`. Current = any Assignment of
+  any kind still ACTIVE under this Manager. Rolled Off (judgment call —
+  the spec only says "associates who've since moved to a different
+  manager", the exact detection rule was left open) = this Manager's
+  most recent Primary with the Associate has CLOSED, *and* the Associate
+  has since started a Primary under a different Manager on or after that
+  close date — i.e. the relationship is genuinely over, not a mid-gap
+  Available stretch. An Associate whose only history with this Manager
+  was a Secondary/CCA, or whose Primary closed but who hasn't started
+  anywhere else yet, appears in neither tab; both are documented in
+  `manager.py._classify`'s own docstring. Reuses `battery.py` unchanged
+  for the tenure bar. **No score of any kind renders on this page** —
+  per spec this is a hard rule ("Aggregate score is never visible to a
+  manager ... for anyone but themselves" refers to a score they gave on
+  one episode's own Review & Scoring tab, never a rolled-up number on
+  this list), not a UI nicety, so unlike the admin's list there is no
+  hidden/eye-icon reveal here at all.
+- **Manager's Associate page** (`views/manager_associate.py`, new):
+  three tabs matching the approved mockup's structure — **Profile**
+  (read-only catalog data, no edit affordance: editing belongs to the
+  Associate's own page, a later phase), **Goals**, **Review & Scoring**.
+  Judgment call: the mockup shows one Goals/Review & Scoring pair per
+  Associate page, but the domain allows a Manager to hold more than one
+  concurrent Assignment with the same Associate (Primary + a CCA they
+  personally organize, say) — an engagement selector appears only when
+  this Manager has more than one ACTIVE Assignment with this Associate;
+  with exactly one (the common case) it's chosen silently.
+
+**Where the frozen state lives**: both new records are kept inside
+`capabilities/assignment`, not `catalog` — they're properties of one
+specific Assignment/episode's lifecycle (frozen goals gate closure,
+frozen scores feed a Closure request), which is squarely `assignment`'s
+existing "rate of change" (guarded state, gated by service-level rules),
+not `catalog`'s (admin/associate direct-edit master data, no rule
+engine). Concretely:
+
+- `GoalSetting` (existing dataclass) gained `frozen: bool`,
+  `agreed_by: Optional[UUID]`, `agreed_at: Optional[datetime]`.
+  `AssignmentService.record_goal_setting` stays the same upsert it always
+  was (raises the new `GoalSettingFrozen` if called against an
+  already-frozen record); `freeze_goal_setting` is the manager's "Agree
+  & Freeze" action; `reopen_goal_setting` is the admin-only unfreeze —
+  see "Deferred" below.
+- A new `ReviewScore` dataclass (assignment_id, `criterion_scores: dict[str,
+  float]`, a computed `objective_score`, notes, frozen) —  deliberately
+  **not** the existing `ClosureRecord`: `ClosureRecord` is written once,
+  atomically, at the moment `close_assignment` actually transitions an
+  Assignment to CLOSED; `ReviewScore` is recorded against a *still-active*
+  Assignment (the spec's Review & Scoring tab happens before the Closure
+  request, let alone its approval). `AssignmentService.submit_review_score`
+  always computes `objective_score` as the simple average across
+  `criterion_scores` server-side (per spec — "simple average, no
+  weighting") rather than trusting a UI-computed number; if a
+  Assignment's `GoalSetting.criteria` is empty, the UI falls back to one
+  ad-hoc `"Overall"` criterion so there's exactly one scoring code path
+  either way.
+
+**The Extension/Closure request mechanism (new, gated) vs. the existing
+direct calls**: a new `ChangeRequest` dataclass
+(`assignment_id`, `request_type` [EXTENSION/CLOSURE], `requested_by`,
+`status` [PENDING/APPROVED/DENIED], `new_end_date` for EXTENSION,
+`decided_by`/`decided_at`) plus `AssignmentService.request_change`
+(creates a PENDING record only — does not itself extend or close
+anything) and `approve_change_request`/`deny_change_request`. This is
+**deliberately separate** from the pre-existing, direct
+`request_extension`/`close_assignment` service calls, which keep their
+current unapproved behavior unchanged for whatever already depends on
+them (e.g. the admin's Associate Portfolio "Close current Primary &
+advance" action, which is a central-team action, not a line manager's,
+and was never meant to be gated the same way). `request_change` enforces
+the spec's ordering: a CLOSURE request requires a frozen `ReviewScore`
+already on file ("after scoring, the manager requests closure"); an
+EXTENSION request requires a `new_end_date` later than the current
+end/start date. **Withdraw stays exactly what it already was** —
+`AssignmentService.withdraw_assignment`, called directly from the
+manager's page, no request/approval record at all, per the spec's
+explicit "direct, no-approval" carve-out for it.
+
+**Deferred — explicitly out of scope for this pass**: the admin-side
+approval screen for `ChangeRequest`s (a list of PENDING requests with
+Approve/Deny buttons calling `approve_change_request`/
+`deny_change_request`) is **not built**. The service methods and the
+repo's `list_pending_change_requests` feed exist and are unit-testable,
+but no view wires them up yet — that's a TODO for whichever pass adds
+admin-facing request handling. Likewise, `reopen_goal_setting` and
+`reopen_review_score` (the admin-only unfreeze actions the Goals/Review &
+Scoring tabs both reference) have no admin screen calling them either —
+the manager's page shows a **disabled** "Reopen ... (admin only)" button
+in both places as an explicit placeholder/TODO, not a working control,
+so the gap is visible in the UI rather than silently missing.
+
+Verified with a new `test_manager_journey_ui.py` (`AppTest`, same
+convention as `test_admin_journey_ui.py` — My Team's Current/Rolled Off
+split and no-score guarantee, goal freeze, score submit-and-freeze, both
+new request actions, and the direct Withdraw) plus a real Playwright
+pass (`screenshot_manager_journey.py`); all pre-existing suites
+(`smoke_test.py` — updated to drill into the new `manager_associate.py`
+page instead of the old inline per-assignment panel,
+`test_bulk_import.py`, `test_rotation_plan_bridge.py`,
+`test_admin_journey_ui.py`, and all `capabilities/*` pytest suites, 253
+tests total) still pass.
+
 ### Resolved via scenario-based gap analysis (2026-09-12)
 
 The following gaps were found by walking every role through every

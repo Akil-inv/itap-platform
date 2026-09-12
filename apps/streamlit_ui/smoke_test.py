@@ -58,18 +58,29 @@ click_button_labeled(at, "Alex")
 assert not at.exception, f"Signing in as Alex raised: {at.exception}"
 assert "My Team" in at.title[0].value
 
-# Record goal setting through the real form
+# Phase 3: "My Team" is a Current/Rolled Off list — drill into Casey's
+# page (views/manager_associate.py) to record goal setting through the
+# real Goals tab form.
+click_button_labeled(at, "Casey")
+assert not at.exception, f"Opening Casey's page raised: {at.exception}"
+assert at.title[0].value == "Casey"
+assert [t.label for t in at.tabs] == ["Profile", "Goals", "Review & Scoring"]
+
 goal_text_areas = [w for w in at.text_area if w.label.startswith("Goals")]
-assert goal_text_areas, "Expected a goal-setting text area for the manager's assignment"
+assert goal_text_areas, "Expected a goal-setting text area for the manager's engagement"
 goal_text_areas[0].set_value("Ship the onboarding module").run()
-click_button_labeled(at, "Record goal setting")
+click_button_labeled(at, "Save")
 assert not at.exception, f"Recording goal setting raised: {at.exception}"
 
 # The Manager-facing "Swap to new manager" primitive was removed per the
 # product/spec ownership fix (central team reassigns, not the manager
 # unilaterally) — replaced by "Withdraw" for early exits.
 assert not any("Swap" in (b.label or "") for b in at.button)
-assert any(b.label == "Withdraw this assignment" for b in at.button)
+assert any(b.label == "Withdraw this engagement" for b in at.button)
+
+click_button_labeled(at, "← Back to My Team")
+assert not at.exception
+assert "My Team" in at.title[0].value
 
 # Switch person -> sign in as the agent, Casey
 click_button_labeled(at, "Switch person")

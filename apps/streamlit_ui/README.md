@@ -132,6 +132,78 @@ Covered end to end by `test_admin_journey_ui.py` (same `AppTest`
 convention as `smoke_test.py`) and `screenshot_admin_journey.py` (same
 Playwright convention as `screenshot.py`).
 
+## Associate-centric manager screens (Phase 3 of the redesign)
+
+Per `docs/associate_journey_redesign.md`'s "Manager flow" section,
+`views/manager.py` was rewritten from a flat per-Assignment list (goal
+setting, extension, close, withdraw all inline) into **My Team**: a
+**Current** / **Rolled Off** tab pair scoped to this Manager's own
+Assignments, each name opening a new level-2 page,
+`views/manager_associate.py` — same "click a name, not a nested tab"
+pattern as the admin's Associates list -> Portfolio. Admin views are
+unchanged; the Associate/Agent view (`views/agent.py`) is still a later
+phase.
+
+**My Team**: Current = any Assignment of any kind still ACTIVE under
+this Manager. Rolled Off = this Manager's most recent Primary with the
+Associate has closed *and* the Associate has since started a Primary
+under a different Manager — `manager.py._classify`'s docstring is the
+source of truth for the exact rule (a spec judgment call: "moved to a
+different manager" wasn't defined further). Reuses `battery.py`
+unchanged for the tenure bar. **No score renders anywhere on this
+page** — not even hidden behind the admin list's eye-icon reveal; per
+spec a Manager never sees an aggregate score for anyone but themselves,
+and even then only the score *they* gave, never a rolled-up number here.
+
+**Manager's Associate page** (`views/manager_associate.py`): three tabs
+— **Profile** (read-only catalog data; editing belongs to the
+Associate's own page, a later phase), **Goals**, **Review & Scoring**.
+A Manager can hold more than one concurrent Assignment with the same
+Associate (Primary + a CCA they organize, say); an engagement selector
+appears only when there's more than one ACTIVE one to choose between,
+staying invisible for the common single-engagement case.
+
+- **Goals**: since the Associate's own page (where they'd normally key
+  in proposed goals) doesn't exist yet, the Manager edits the goal text
+  directly here and clicks **Agree & Freeze**
+  (`AssignmentService.freeze_goal_setting`) to lock it for both sides.
+  Frozen state (`frozen`/`agreed_by`/`agreed_at`) lives right on the
+  existing `GoalSetting` record in `capabilities/assignment` — it's a
+  property of this one Assignment's lifecycle, not new catalog data.
+- **Review & Scoring**: score directly against the frozen goal's
+  criteria (falling back to one ad-hoc "Overall" criterion if none were
+  set) — no admin gate on submitting a score itself. The objective score
+  is always the simple average, computed server-side
+  (`AssignmentService.submit_review_score`), stored in a new
+  `ReviewScore` record (deliberately distinct from `ClosureRecord`,
+  which is only ever written at actual closure) and frozen immediately.
+  Below that: a direct **Withdraw** (unchanged `withdraw_assignment`
+  call, no approval, visually separated) and the two new gated actions,
+  **Request Extension** / **Request Closure**
+  (`AssignmentService.request_change` — creates a PENDING `ChangeRequest`
+  and does nothing else; a Closure request additionally requires a
+  frozen score already on file, per spec's "after scoring, the manager
+  requests closure"). Both new requests, and any already on file, list
+  under "Requests on this engagement" so the Manager can see they're
+  pending.
+
+**Deferred, explicitly**: the admin-approval screen that would act on
+`ChangeRequest`s (`AssignmentService.approve_change_request`/
+`deny_change_request`, and `list_pending_change_requests` as the feed it
+would read from) is not built — a TODO for a later pass. The
+admin-reopen actions for a frozen Goals/Review & Scoring tab
+(`reopen_goal_setting`/`reopen_review_score`) are implemented at the
+service layer but likewise have no admin screen calling them yet; both
+tabs show a **disabled** "Reopen ... (admin only)" button as an explicit
+placeholder rather than hiding the gap.
+
+Covered end to end by `test_manager_journey_ui.py` (same `AppTest`
+convention as `test_admin_journey_ui.py`) and
+`screenshot_manager_journey.py` (same Playwright convention as
+`screenshot_admin_journey.py`); `smoke_test.py` was updated to drill
+into the new `manager_associate.py` page (its old inline per-assignment
+goal-setting/withdraw flow moved there).
+
 ## Running locally
 
 ```bash
@@ -285,6 +357,16 @@ admin screens" above:
 
 ```bash
 rm -f test_admin_journey_ui.db && python test_admin_journey_ui.py
+```
+
+`test_manager_journey_ui.py` covers the Phase 3 manager screens (My
+Team's Current/Rolled Off split and no-score guarantee, Goals
+freeze, Review & Scoring submit-and-freeze, both new request actions,
+and the direct Withdraw) — see "Associate-centric manager screens"
+above:
+
+```bash
+rm -f test_manager_journey_ui.db && python test_manager_journey_ui.py
 ```
 
 ## Visual verification (`screenshot.py`)

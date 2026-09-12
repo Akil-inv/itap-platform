@@ -47,10 +47,14 @@ from ..domain import (
     AssignmentKind,
     AssignmentNotFound,
     AssignmentState,
+    ChangeRequest,
     ClosureRecord,
     ConcurrentModification,
     GoalSetting,
+    RequestStatus,
+    RequestType,
     ReverseFeedback,
+    ReviewScore,
 )
 
 metadata = MetaData()
@@ -79,6 +83,37 @@ goal_settings_table = Table(
     Column("goals", Text, nullable=False),
     Column("criteria", JSON, nullable=False, default=list),
     Column("set_at", DateTime(timezone=True), nullable=False),
+    Column("frozen", Integer, nullable=False),
+    Column("agreed_by", String(36), nullable=True),
+    Column("agreed_at", DateTime(timezone=True), nullable=True),
+)
+
+review_scores_table = Table(
+    "review_scores",
+    metadata,
+    Column("id", String(36), primary_key=True),
+    Column("assignment_id", String(36), nullable=False, unique=True, index=True),
+    Column("criterion_scores", JSON, nullable=False),
+    Column("objective_score", Float, nullable=False),
+    Column("notes", Text, nullable=False),
+    Column("submitted_by", String(36), nullable=True),
+    Column("submitted_at", DateTime(timezone=True), nullable=False),
+    Column("frozen", Integer, nullable=False),
+)
+
+change_requests_table = Table(
+    "change_requests",
+    metadata,
+    Column("id", String(36), primary_key=True),
+    Column("assignment_id", String(36), nullable=False, index=True),
+    Column("request_type", String(16), nullable=False),
+    Column("requested_by", String(36), nullable=False),
+    Column("new_end_date", Date, nullable=True),
+    Column("notes", Text, nullable=False),
+    Column("status", String(16), nullable=False),
+    Column("requested_at", DateTime(timezone=True), nullable=False),
+    Column("decided_by", String(36), nullable=True),
+    Column("decided_at", DateTime(timezone=True), nullable=True),
 )
 
 closure_records_table = Table(
@@ -136,12 +171,18 @@ def create_schema(engine: Engine) -> None:
             goal_settings_table,
             closure_records_table,
             reverse_feedback_table,
+            review_scores_table,
+            change_requests_table,
         ],
     )
     _ensure_columns(
         engine, assignments_table, backfill={"version": 0, "kind": AssignmentKind.PRIMARY.value}
     )
-    _ensure_columns(engine, goal_settings_table, backfill={"criteria": []})
+    _ensure_columns(
+        engine,
+        goal_settings_table,
+        backfill={"criteria": [], "frozen": 0, "agreed_by": None, "agreed_at": None},
+    )
 
 
 class SqlAssignmentRepo:
@@ -258,13 +299,15 @@ class SqlAssignmentRepo:
     def add_goal_setting(self, goal_setting: GoalSetting) -> None:
         with self._engine.begin() as conn:
             conn.execute(
-                insert(goal_settings_table).values(
-                    id=str(goal_setting.id),
-                    assignment_id=str(goal_setting.assignment_id),
-                    goals=goal_setting.goals,
-                    criteria=goal_setting.criteria,
-                    set_at=goal_setting.set_at,
-                )
+                insert(goal_settings_table).values(**_goal_setting_values(goal_setting))
+            )
+
+    def update_goal_setting(self, goal_setting: GoalSetting) -> None:
+        with self._engine.begin() as conn:
+            conn.execute(
+                update(goal_settings_table)
+                .where(goal_settings_table.c.assignment_id == str(goal_setting.assignment_id))
+                .values(**_goal_setting_values(goal_setting, include_id=False))
             )
 
     def get_goal_setting(self, assignment_id: UUID) -> Optional[GoalSetting]:
@@ -276,13 +319,7 @@ class SqlAssignmentRepo:
             ).mappings().first()
         if row is None:
             return None
-        return GoalSetting(
-            id=UUID(row["id"]),
-            assignment_id=UUID(row["assignment_id"]),
-            goals=row["goals"],
-            criteria=list(row["criteria"] or []),
-            set_at=row["set_at"],
-        )
+        return _row_to_goal_setting(row)
 
     def get_closure_record(self, assignment_id: UUID) -> Optional[ClosureRecord]:
         with self._engine.connect() as conn:
@@ -300,6 +337,72 @@ class SqlAssignmentRepo:
             subjective_notes=row["subjective_notes"],
             recorded_at=row["recorded_at"],
         )
+
+    # -- Review & Scoring (Phase 3) --
+
+    def add_review_score(self, review_score: ReviewScore) -> None:
+        with self._engine.begin() as conn:
+            conn.execute(insert(review_scores_table).values(**_review_score_values(review_score)))
+
+    def update_review_score(self, review_score: ReviewScore) -> None:
+        with self._engine.begin() as conn:
+            conn.execute(
+                update(review_scores_table)
+                .where(review_scores_table.c.assignment_id == str(review_score.assignment_id))
+                .values(**_review_score_values(review_score, include_id=False))
+            )
+
+    def get_review_score(self, assignment_id: UUID) -> Optional[ReviewScore]:
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                select(review_scores_table).where(
+                    review_scores_table.c.assignment_id == str(assignment_id)
+                )
+            ).mappings().first()
+        if row is None:
+            return None
+        return _row_to_review_score(row)
+
+    # -- Extension/Closure requests (Phase 3) --
+
+    def add_change_request(self, request: ChangeRequest) -> None:
+        with self._engine.begin() as conn:
+            conn.execute(insert(change_requests_table).values(**_change_request_values(request)))
+
+    def update_change_request(self, request: ChangeRequest) -> None:
+        with self._engine.begin() as conn:
+            conn.execute(
+                update(change_requests_table)
+                .where(change_requests_table.c.id == str(request.id))
+                .values(**_change_request_values(request, include_id=False))
+            )
+
+    def get_change_request(self, request_id: UUID) -> Optional[ChangeRequest]:
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                select(change_requests_table).where(
+                    change_requests_table.c.id == str(request_id)
+                )
+            ).mappings().first()
+        return _row_to_change_request(row) if row is not None else None
+
+    def list_change_requests(self, assignment_id: UUID) -> list[ChangeRequest]:
+        with self._engine.connect() as conn:
+            rows = conn.execute(
+                select(change_requests_table).where(
+                    change_requests_table.c.assignment_id == str(assignment_id)
+                )
+            ).mappings().all()
+        return [_row_to_change_request(r) for r in rows]
+
+    def list_pending_change_requests(self) -> list[ChangeRequest]:
+        with self._engine.connect() as conn:
+            rows = conn.execute(
+                select(change_requests_table).where(
+                    change_requests_table.c.status == RequestStatus.PENDING.value
+                )
+            ).mappings().all()
+        return [_row_to_change_request(r) for r in rows]
 
     def add_reverse_feedback(self, feedback: ReverseFeedback) -> None:
         with self._engine.begin() as conn:
@@ -348,6 +451,94 @@ def _assignment_values(
     if include_id:
         values["id"] = str(assignment.id)
     return values
+
+
+def _goal_setting_values(goal_setting: GoalSetting, include_id: bool = True) -> dict:
+    values = {
+        "assignment_id": str(goal_setting.assignment_id),
+        "goals": goal_setting.goals,
+        "criteria": goal_setting.criteria,
+        "set_at": goal_setting.set_at,
+        "frozen": int(goal_setting.frozen),
+        "agreed_by": str(goal_setting.agreed_by) if goal_setting.agreed_by else None,
+        "agreed_at": goal_setting.agreed_at,
+    }
+    if include_id:
+        values["id"] = str(goal_setting.id)
+    return values
+
+
+def _row_to_goal_setting(row) -> GoalSetting:
+    return GoalSetting(
+        id=UUID(row["id"]),
+        assignment_id=UUID(row["assignment_id"]),
+        goals=row["goals"],
+        criteria=list(row["criteria"] or []),
+        set_at=row["set_at"],
+        frozen=bool(row["frozen"]),
+        agreed_by=UUID(row["agreed_by"]) if row["agreed_by"] else None,
+        agreed_at=row["agreed_at"],
+    )
+
+
+def _review_score_values(review_score: ReviewScore, include_id: bool = True) -> dict:
+    values = {
+        "assignment_id": str(review_score.assignment_id),
+        "criterion_scores": review_score.criterion_scores,
+        "objective_score": review_score.objective_score,
+        "notes": review_score.notes,
+        "submitted_by": str(review_score.submitted_by) if review_score.submitted_by else None,
+        "submitted_at": review_score.submitted_at,
+        "frozen": int(review_score.frozen),
+    }
+    if include_id:
+        values["id"] = str(review_score.id)
+    return values
+
+
+def _row_to_review_score(row) -> ReviewScore:
+    return ReviewScore(
+        id=UUID(row["id"]),
+        assignment_id=UUID(row["assignment_id"]),
+        criterion_scores=dict(row["criterion_scores"] or {}),
+        objective_score=row["objective_score"],
+        notes=row["notes"],
+        submitted_by=UUID(row["submitted_by"]) if row["submitted_by"] else None,
+        submitted_at=row["submitted_at"],
+        frozen=bool(row["frozen"]),
+    )
+
+
+def _change_request_values(request: ChangeRequest, include_id: bool = True) -> dict:
+    values = {
+        "assignment_id": str(request.assignment_id),
+        "request_type": request.request_type.value,
+        "requested_by": str(request.requested_by),
+        "new_end_date": request.new_end_date,
+        "notes": request.notes,
+        "status": request.status.value,
+        "requested_at": request.requested_at,
+        "decided_by": str(request.decided_by) if request.decided_by else None,
+        "decided_at": request.decided_at,
+    }
+    if include_id:
+        values["id"] = str(request.id)
+    return values
+
+
+def _row_to_change_request(row) -> ChangeRequest:
+    return ChangeRequest(
+        id=UUID(row["id"]),
+        assignment_id=UUID(row["assignment_id"]),
+        request_type=RequestType(row["request_type"]),
+        requested_by=UUID(row["requested_by"]),
+        new_end_date=row["new_end_date"],
+        notes=row["notes"],
+        status=RequestStatus(row["status"]),
+        requested_at=row["requested_at"],
+        decided_by=UUID(row["decided_by"]) if row["decided_by"] else None,
+        decided_at=row["decided_at"],
+    )
 
 
 def _row_to_assignment(row) -> Assignment:

@@ -1,148 +1,133 @@
+"""Manager's "My Team" — Phase 3 of the redesign
+(docs/associate_journey_redesign.md's "Manager flow" section): scoped to
+this Manager's own Assignments, split into **Current** / **Rolled Off**
+tabs. Reuses the tenure battery bar (`battery.py`, same as the admin's
+list) but carries **no score display of any kind, hidden or otherwise**
+— per spec, "Aggregate score is never visible to a manager ... for
+anyone but themselves" refers to a score a manager *gave*, on a specific
+episode's own Review & Scoring tab, never a rolled-up number on this
+list. This is a hard rule, not a UI nicety: don't add a hidden/eye-icon
+score here the way the admin's list has one.
+
+Clicking a name opens `views/manager_associate.py` (level 2, this
+Manager's own view of one Associate) — same "level 2 page via
+session_state, not a nested tab" pattern as
+`views/functional_owner.py` -> `views/associate_portfolio.py`.
+"""
 from __future__ import annotations
 
-from datetime import date
+from uuid import UUID
+
+from party_identity.domain import Party
+from rbac_scope import Viewer
 
 import streamlit as st
-from assignment.domain import ConcurrentModification
-from assignment.rules import TransitionDenied
-from party_identity.domain import Party
-from rbac_scope import PermissionDenied, Viewer
-
-import rotation_plan_bridge
-from journey import render_stepper, stage_index
-from party_helpers import safe_get_name
-
-ACTIONABLE_ERRORS = (TransitionDenied, ConcurrentModification)
+from assignment.domain import AssignmentKind
+from battery import render_html as render_battery_html
+from views import manager_associate
 
 
 def render(services, viewer: Viewer, current_party: Party) -> None:
+    selected_id = st.session_state.get("selected_manager_associate_id")
+    if selected_id is not None:
+        try:
+            agent = services.party_repo.get(UUID(selected_id))
+        except Exception:
+            del st.session_state["selected_manager_associate_id"]
+            st.rerun()
+            return
+        manager_associate.render(services, viewer, agent)
+        return
+
     st.title("My Team")
     st.caption(f"Welcome back, {current_party.display_name}.")
 
-    assignments = services.scope.list_visible_assignments(viewer)
-    if not assignments:
-        st.write("No Associates currently tasked to you.")
+    current_ids, rolled_off_ids = _classify(services, viewer)
+
+    tab_current, tab_rolled_off = st.tabs(["Current", "Rolled Off"])
+    with tab_current:
+        _render_rows(services, current_ids, empty_message="No Associates currently tasked to you.")
+    with tab_rolled_off:
+        st.caption("Read-only history — associates who have since moved to a different manager.")
+        _render_rows(services, rolled_off_ids, empty_message="No one has rolled off your team yet.")
+
+
+def _classify(services, viewer: Viewer) -> tuple[list, list]:
+    """Splits this Manager's Associates into Current / Rolled Off.
+
+    **Current**: any Assignment of any kind (Primary/Secondary/CCA) still
+    ACTIVE under this Manager.
+
+    **Rolled Off** (judgment call — spec says "associates who've since
+    moved to a different manager"; the exact detection rule was left
+    open): the Associate's most recent Primary *under this Manager* has
+    closed, AND they have since started a Primary under a *different*
+    Manager (start date on/after that closed Primary's end date) — i.e.
+    the relationship is genuinely over, not just an in-between gap. An
+    Associate who merely finished a Secondary/CCA with this Manager, or
+    whose Primary closed but who hasn't started anywhere else yet
+    (Available/Unassigned), does not show up in either tab — they simply
+    aren't "this Manager's team" right now in a way either tab describes.
+    """
+    my_assignments = services.assignment_repo.list_by_manager(viewer.party_id)
+    agent_ids = {a.agent_id for a in my_assignments}
+
+    current_ids: list = []
+    rolled_off_ids: list = []
+    for agent_id in agent_ids:
+        all_assignments = services.assignment_repo.list_by_agent(agent_id)
+        mine = [a for a in all_assignments if a.manager_id == viewer.party_id]
+
+        if any(a.state.value == "active" for a in mine):
+            current_ids.append(agent_id)
+            continue
+
+        my_primaries = sorted(
+            (a for a in mine if a.kind == AssignmentKind.PRIMARY), key=lambda a: a.start_date
+        )
+        if not my_primaries:
+            continue
+        last_primary = my_primaries[-1]
+        if last_primary.state.value != "closed":
+            continue
+
+        moved_on_cutoff = last_primary.end_date or last_primary.start_date
+        moved_on = any(
+            a.kind == AssignmentKind.PRIMARY
+            and a.manager_id != viewer.party_id
+            and a.start_date >= moved_on_cutoff
+            for a in all_assignments
+        )
+        if moved_on:
+            rolled_off_ids.append(agent_id)
+
+    return current_ids, rolled_off_ids
+
+
+def _render_rows(services, agent_ids: list, empty_message: str) -> None:
+    if not agent_ids:
+        st.write(empty_message)
         return
 
-    for assignment in assignments:
-        agent_name = safe_get_name(services.party_repo, assignment.agent_id)
-        with st.expander(
-            f"{agent_name} — {assignment.state.value} "
-            f"({assignment.start_date} to {assignment.end_date or 'open'})",
-            expanded=(assignment.state.value == "active"),
-        ):
-            _assignment_journey(services, viewer, assignment)
-
-
-def _assignment_journey(services, viewer: Viewer, assignment) -> None:
-    goal_setting = services.scope.get_goal_setting(viewer, assignment.id)
-    stage = stage_index(assignment, goal_setting)
-    render_stepper(stage)
-
-    with st.container(border=True):
-        st.markdown("**Goal Setting**")
-        if goal_setting is None:
-            st.warning("No goal setting recorded yet — nothing to assess against at closure.")
-            with st.form(f"goals_{assignment.id}"):
-                goals = st.text_area("Goals (agreed with the associate)")
-                criteria_text = st.text_input(
-                    "Scoring criteria (semicolon-separated, optional)",
-                    placeholder="Communication; Technical Skill; Ownership",
-                )
-                if st.form_submit_button("Record goal setting") and goals:
-                    criteria = [c.strip() for c in criteria_text.split(";") if c.strip()]
-                    services.assignment_service.record_goal_setting(
-                        assignment.id, goals, criteria=criteria
-                    )
+    agents = sorted(
+        (services.party_repo.get(agent_id) for agent_id in agent_ids),
+        key=lambda p: p.display_name,
+    )
+    for agent in agents:
+        with st.container(border=True):
+            cols = st.columns([3, 3])
+            with cols[0]:
+                if st.button(agent.display_name, key=f"open_manager_{agent.id}", width="stretch"):
+                    st.session_state["selected_manager_associate_id"] = str(agent.id)
                     st.rerun()
-        else:
-            st.write(goal_setting.goals)
-            if goal_setting.criteria:
-                st.caption("Scoring criteria: " + ", ".join(goal_setting.criteria))
-
-    if assignment.state.value == "active":
-        with st.container(border=True):
-            st.markdown("**Assignment in progress**")
-            tab_extend, tab_close, tab_withdraw = st.tabs(
-                ["Request extension", "Close assignment", "Withdraw"]
-            )
-
-            with tab_extend:
-                with st.form(f"extend_{assignment.id}"):
-                    new_end = st.date_input(
-                        "New end date", value=assignment.end_date or date.today()
-                    )
-                    if st.form_submit_button("Request extension"):
-                        try:
-                            services.assignment_service.request_extension(
-                                assignment.id,
-                                requested_by=viewer.party_id,
-                                new_end_date=new_end,
-                            )
-                            st.success("Extended.")
-                            st.rerun()
-                        except ACTIONABLE_ERRORS as e:
-                            st.error(str(e))
-
-            with tab_close:
-                if goal_setting is None:
-                    st.info("Record goal setting above first — there's nothing to close against yet.")
-                with st.form(f"close_{assignment.id}"):
-                    score = st.slider("Objective score", 0.0, 5.0, 3.0, 0.1)
-                    notes = st.text_area("Subjective notes")
-                    if st.form_submit_button("Close assignment"):
-                        try:
-                            services.assignment_service.close_assignment(
-                                assignment.id, objective_score=score, subjective_notes=notes
-                            )
-                            rotation_plan_bridge.advance_linked_stage_if_closed(
-                                services, assignment.id
-                            )
-                            st.success("Closed.")
-                            st.rerun()
-                        except ACTIONABLE_ERRORS as e:
-                            st.error(str(e))
-
-            with tab_withdraw:
-                st.caption(
-                    "For when the Associate leaves the program or this rotation early — "
-                    "no score is recorded, this isn't a performance assessment."
-                )
-                with st.form(f"withdraw_{assignment.id}"):
-                    notes = st.text_area("Reason (optional)", key=f"withdraw_notes_{assignment.id}")
-                    if st.form_submit_button("Withdraw this assignment"):
-                        try:
-                            services.assignment_service.withdraw_assignment(
-                                assignment.id, notes=notes or None
-                            )
-                            rotation_plan_bridge.advance_linked_stage_if_closed(
-                                services, assignment.id
-                            )
-                            st.success("Withdrawn.")
-                            st.rerun()
-                        except ACTIONABLE_ERRORS as e:
-                            st.error(str(e))
-    else:
-        with st.container(border=True):
-            st.markdown("**Closed**")
-            if assignment.closed_reason == "completed":
-                closure = services.scope.get_closure_record(viewer, assignment.id)
-                if closure:
-                    st.write(f"**Score:** {closure.objective_score} — {closure.subjective_notes}")
-            else:
-                reason_label = (assignment.closed_reason or "closed").replace("_", " ")
-                st.write(f"**Reason:** {reason_label}")
-                if assignment.closure_note:
-                    st.write(assignment.closure_note)
-
-    with st.container(border=True):
-        st.markdown("**Feedback from this Associate about you**")
-        try:
-            feedback = services.scope.list_reverse_feedback(viewer, assignment.id)
-        except PermissionDenied:
-            feedback = []
-        if feedback:
-            for f in feedback:
-                st.write(f"- {f.notes} _(recorded {f.recorded_at:%Y-%m-%d})_")
-        else:
-            st.caption("No feedback recorded yet.")
+            with cols[1]:
+                st.caption("Tenure")
+                all_assignments = services.assignment_repo.list_by_agent(agent.id)
+                battery_html = render_battery_html(all_assignments)
+                if battery_html:
+                    st.markdown(battery_html, unsafe_allow_html=True)
+                else:
+                    st.caption("No history yet")
+            # Deliberately no score column here — see this module's
+            # docstring: managers never see the aggregate score, not even
+            # hidden behind a reveal.

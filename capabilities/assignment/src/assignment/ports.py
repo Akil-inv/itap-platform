@@ -9,7 +9,14 @@ from datetime import date
 from typing import Optional, Protocol
 from uuid import UUID
 
-from .domain import Assignment, ClosureRecord, GoalSetting, ReverseFeedback
+from .domain import (
+    Assignment,
+    ChangeRequest,
+    ClosureRecord,
+    GoalSetting,
+    ReverseFeedback,
+    ReviewScore,
+)
 
 
 class AssignmentRepo(Protocol):
@@ -63,6 +70,12 @@ class AssignmentRepo(Protocol):
 
     def add_goal_setting(self, goal_setting: GoalSetting) -> None: ...
 
+    def update_goal_setting(self, goal_setting: GoalSetting) -> None:
+        """Replace an existing GoalSetting's fields (goal text, criteria,
+        freeze state) in place, keyed by assignment_id — used for both a
+        pre-freeze text edit and the freeze/reopen actions themselves."""
+        ...
+
     def get_goal_setting(self, assignment_id: UUID) -> Optional[GoalSetting]: ...
 
     def get_closure_record(self, assignment_id: UUID) -> Optional[ClosureRecord]: ...
@@ -70,3 +83,31 @@ class AssignmentRepo(Protocol):
     def add_reverse_feedback(self, feedback: ReverseFeedback) -> None: ...
 
     def list_reverse_feedback(self, assignment_id: UUID) -> list[ReverseFeedback]: ...
+
+    # -- Review & Scoring (Phase 3) --
+
+    def add_review_score(self, review_score: ReviewScore) -> None: ...
+
+    def update_review_score(self, review_score: ReviewScore) -> None:
+        """Replace an existing ReviewScore in place (re-submission after
+        an admin reopen, or the reopen itself clearing `frozen`)."""
+        ...
+
+    def get_review_score(self, assignment_id: UUID) -> Optional[ReviewScore]: ...
+
+    # -- Extension/Closure requests (Phase 3) --
+
+    def add_change_request(self, request: ChangeRequest) -> None: ...
+
+    def update_change_request(self, request: ChangeRequest) -> None: ...
+
+    def get_change_request(self, request_id: UUID) -> Optional[ChangeRequest]: ...
+
+    def list_change_requests(self, assignment_id: UUID) -> list[ChangeRequest]: ...
+
+    def list_pending_change_requests(self) -> list[ChangeRequest]:
+        """Every PENDING ChangeRequest, any assignment — the feed an
+        admin-approval screen would list from. Not consumed by any UI
+        yet (see ChangeRequest's docstring) but needed now so that
+        screen doesn't require a repo change to add later."""
+        ...

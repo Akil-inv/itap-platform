@@ -10,10 +10,13 @@ from ..domain import (
     Assignment,
     AssignmentNotFound,
     AssignmentState,
+    ChangeRequest,
     ClosureRecord,
     ConcurrentModification,
     GoalSetting,
+    RequestStatus,
     ReverseFeedback,
+    ReviewScore,
 )
 
 
@@ -23,6 +26,8 @@ class InMemoryAssignmentRepo:
         self._goal_settings: dict[UUID, GoalSetting] = {}  # keyed by assignment_id
         self._closure_records: dict[UUID, ClosureRecord] = {}  # keyed by assignment_id
         self._reverse_feedback: dict[UUID, list[ReverseFeedback]] = {}
+        self._review_scores: dict[UUID, ReviewScore] = {}  # keyed by assignment_id
+        self._change_requests: dict[UUID, ChangeRequest] = {}  # keyed by request id
 
     def add(self, assignment: Assignment) -> None:
         if assignment.id in self._assignments:
@@ -92,6 +97,9 @@ class InMemoryAssignmentRepo:
     def add_goal_setting(self, goal_setting: GoalSetting) -> None:
         self._goal_settings[goal_setting.assignment_id] = goal_setting
 
+    def update_goal_setting(self, goal_setting: GoalSetting) -> None:
+        self._goal_settings[goal_setting.assignment_id] = goal_setting
+
     def get_goal_setting(self, assignment_id: UUID) -> Optional[GoalSetting]:
         return self._goal_settings.get(assignment_id)
 
@@ -103,3 +111,31 @@ class InMemoryAssignmentRepo:
 
     def list_reverse_feedback(self, assignment_id: UUID) -> list[ReverseFeedback]:
         return list(self._reverse_feedback.get(assignment_id, []))
+
+    # -- Review & Scoring (Phase 3) --
+
+    def add_review_score(self, review_score: ReviewScore) -> None:
+        self._review_scores[review_score.assignment_id] = review_score
+
+    def update_review_score(self, review_score: ReviewScore) -> None:
+        self._review_scores[review_score.assignment_id] = review_score
+
+    def get_review_score(self, assignment_id: UUID) -> Optional[ReviewScore]:
+        return self._review_scores.get(assignment_id)
+
+    # -- Extension/Closure requests (Phase 3) --
+
+    def add_change_request(self, request: ChangeRequest) -> None:
+        self._change_requests[request.id] = request
+
+    def update_change_request(self, request: ChangeRequest) -> None:
+        self._change_requests[request.id] = request
+
+    def get_change_request(self, request_id: UUID) -> Optional[ChangeRequest]:
+        return self._change_requests.get(request_id)
+
+    def list_change_requests(self, assignment_id: UUID) -> list[ChangeRequest]:
+        return [r for r in self._change_requests.values() if r.assignment_id == assignment_id]
+
+    def list_pending_change_requests(self) -> list[ChangeRequest]:
+        return [r for r in self._change_requests.values() if r.status == RequestStatus.PENDING]

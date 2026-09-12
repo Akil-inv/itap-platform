@@ -8,14 +8,22 @@ from datetime import date
 from typing import Optional
 from uuid import UUID
 
+from datetime import datetime, timezone
+
 from .clock import today
 from .domain import (
     Assignment,
     AssignmentKind,
+    ChangeRequest,
     ClosureRecord,
     DuplicateAssignment,
     GoalSetting,
+    GoalSettingFrozen,
+    RequestStatus,
+    RequestType,
     ReverseFeedback,
+    ReviewScore,
+    ReviewScoreFrozen,
 )
 from .ports import AssignmentRepo
 from .rules import RuleEngine, TransitionDenied
@@ -62,11 +70,55 @@ class AssignmentService:
     def record_goal_setting(
         self, assignment_id: UUID, goals: str, criteria: Optional[list[str]] = None
     ) -> GoalSetting:
+        """Create or edit the goal text for an Assignment — an upsert, so
+        the manager/associate can keep revising it up to the point it's
+        frozen (docs/associate_journey_redesign.md's "Goals tab": agreed
+        verbally offline, then keyed in). Raises GoalSettingFrozen if the
+        existing record is already frozen — only
+        AssignmentService.reopen_goal_setting (admin) can clear that."""
         self._repo.get(assignment_id)  # raises AssignmentNotFound if missing
+        existing = self._repo.get_goal_setting(assignment_id)
+        if existing is not None:
+            if existing.frozen:
+                raise GoalSettingFrozen(
+                    "Goals are frozen — an admin must reopen them before they can be edited"
+                )
+            existing.goals = goals
+            existing.criteria = criteria or []
+            self._repo.update_goal_setting(existing)
+            return existing
         goal_setting = GoalSetting(
             assignment_id=assignment_id, goals=goals, criteria=criteria or []
         )
         self._repo.add_goal_setting(goal_setting)
+        return goal_setting
+
+    def freeze_goal_setting(self, assignment_id: UUID, agreed_by: UUID) -> GoalSetting:
+        """The manager's "Agree & Freeze" action — locks the goal text for
+        both parties. Only an admin (reopen_goal_setting) can undo this."""
+        goal_setting = self._repo.get_goal_setting(assignment_id)
+        if goal_setting is None:
+            raise ValueError("No goal setting recorded yet — nothing to freeze")
+        if goal_setting.frozen:
+            raise GoalSettingFrozen("Goals are already frozen")
+        goal_setting.frozen = True
+        goal_setting.agreed_by = agreed_by
+        goal_setting.agreed_at = datetime.now(timezone.utc)
+        self._repo.update_goal_setting(goal_setting)
+        return goal_setting
+
+    def reopen_goal_setting(self, assignment_id: UUID) -> GoalSetting:
+        """Admin-only action (not gated here — RBAC/UI enforces who may
+        call this) that clears a goal freeze so a new project can be
+        added mid-engagement, per spec. NOT wired to an admin screen in
+        this pass — see docs/architecture.md's Phase 3 section."""
+        goal_setting = self._repo.get_goal_setting(assignment_id)
+        if goal_setting is None:
+            raise ValueError("No goal setting recorded for this assignment")
+        goal_setting.frozen = False
+        goal_setting.agreed_by = None
+        goal_setting.agreed_at = None
+        self._repo.update_goal_setting(goal_setting)
         return goal_setting
 
     def request_extension(
@@ -165,6 +217,164 @@ class AssignmentService:
         feedback = ReverseFeedback(assignment_id=assignment_id, notes=notes)
         self._repo.add_reverse_feedback(feedback)
         return feedback
+
+    # -- Review & Scoring (Phase 3) --
+
+    def submit_review_score(
+        self,
+        assignment_id: UUID,
+        criterion_scores: dict[str, float],
+        notes: str,
+        submitted_by: UUID,
+    ) -> ReviewScore:
+        """Manager's Review & Scoring submission for a still-ACTIVE
+        Assignment — no admin gate on scoring itself (per spec). The
+        objective score is always the simple average across
+        `criterion_scores`, computed here rather than trusted from the
+        caller. Frozen immediately on submission; a re-submission against
+        an already-frozen score raises ReviewScoreFrozen — only
+        reopen_review_score (admin) clears that."""
+        self._repo.get(assignment_id)  # raises AssignmentNotFound if missing
+        existing = self._repo.get_review_score(assignment_id)
+        if existing is not None and existing.frozen:
+            raise ReviewScoreFrozen(
+                "This score is frozen — an admin must reopen it before it can be corrected"
+            )
+        objective_score = sum(criterion_scores.values()) / len(criterion_scores)
+        review_score = ReviewScore(
+            assignment_id=assignment_id,
+            criterion_scores=dict(criterion_scores),
+            objective_score=objective_score,
+            notes=notes,
+            submitted_by=submitted_by,
+        )
+        if existing is not None:
+            self._repo.update_review_score(review_score)
+        else:
+            self._repo.add_review_score(review_score)
+        return review_score
+
+    def reopen_review_score(self, assignment_id: UUID) -> ReviewScore:
+        """Admin-only action (not gated here — RBAC/UI enforces who may
+        call this) that clears a score freeze so the manager can correct
+        and resubmit. NOT wired to an admin screen in this pass — see
+        docs/architecture.md's Phase 3 section."""
+        review_score = self._repo.get_review_score(assignment_id)
+        if review_score is None:
+            raise ValueError("No review score recorded for this assignment")
+        review_score.frozen = False
+        self._repo.update_review_score(review_score)
+        return review_score
+
+    # -- Extension/Closure requests (Phase 3) --
+
+    def request_change(
+        self,
+        assignment_id: UUID,
+        request_type: RequestType,
+        requested_by: UUID,
+        new_end_date: Optional[date] = None,
+        notes: str = "",
+    ) -> ChangeRequest:
+        """Creates a PENDING ChangeRequest — does not itself extend or
+        close anything (docs/associate_journey_redesign.md's "Extension /
+        Closure" pattern: manager requests, admin approves, logged).
+        Deliberately independent of the existing, direct
+        `request_extension`/`close_assignment` calls, which keep their
+        current unchanged behavior for whatever already depends on them.
+
+        Only the assignment's own manager may request; a CLOSURE request
+        additionally requires a frozen ReviewScore already on file (per
+        spec: "after scoring, the manager requests closure") — an
+        EXTENSION request needs `new_end_date`."""
+        assignment = self._repo.get(assignment_id)
+        if requested_by != assignment.manager_id:
+            raise ValueError("Only the assignment's own manager may request this")
+        if assignment.state.value != "active":
+            raise ValueError("Only an active assignment can have a change requested")
+        if request_type == RequestType.EXTENSION:
+            if new_end_date is None:
+                raise ValueError("new_end_date is required to request an extension")
+            floor = assignment.end_date or assignment.start_date
+            if new_end_date <= floor:
+                raise ValueError(
+                    f"An extension must move the end date later than {floor} (got {new_end_date})"
+                )
+        else:  # CLOSURE
+            review_score = self._repo.get_review_score(assignment_id)
+            if review_score is None or not review_score.frozen:
+                raise ValueError(
+                    "Submit and freeze a Review & Scoring score before requesting closure"
+                )
+        request = ChangeRequest(
+            assignment_id=assignment_id,
+            request_type=request_type,
+            requested_by=requested_by,
+            new_end_date=new_end_date,
+            notes=notes,
+        )
+        self._repo.add_change_request(request)
+        return request
+
+    def list_change_requests(self, assignment_id: UUID) -> list[ChangeRequest]:
+        return self._repo.list_change_requests(assignment_id)
+
+    def list_pending_change_requests(self) -> list[ChangeRequest]:
+        """Feed for a future admin-approval screen — not consumed by any
+        UI yet. See ChangeRequest's docstring / docs/architecture.md's
+        Phase 3 section for what's deferred."""
+        return self._repo.list_pending_change_requests()
+
+    def approve_change_request(self, request_id: UUID, decided_by: UUID) -> ChangeRequest:
+        """Admin-only action (not gated here — RBAC/UI enforces who may
+        call this; no admin screen calls it yet, see ChangeRequest's
+        docstring). Approving an EXTENSION applies it via the existing
+        direct extension path; approving a CLOSURE applies the
+        assignment's frozen ReviewScore via the existing close_assignment
+        path — this is the point the Agent actually moves to CLOSED
+        (Available, for a Primary) per spec, not the request itself."""
+        request = self._repo.get_change_request(request_id)
+        if request is None:
+            raise ValueError(f"ChangeRequest {request_id} not found")
+        if request.status != RequestStatus.PENDING:
+            raise ValueError("This request has already been decided")
+        assignment = self._repo.get(request.assignment_id)
+        if request.request_type == RequestType.EXTENSION:
+            self.request_extension(
+                request.assignment_id,
+                requested_by=assignment.manager_id,
+                new_end_date=request.new_end_date,
+            )
+        else:  # CLOSURE
+            review_score = self._repo.get_review_score(request.assignment_id)
+            if review_score is None:
+                raise ValueError("No review score on file to close against")
+            self.close_assignment(
+                request.assignment_id,
+                objective_score=review_score.objective_score,
+                subjective_notes=review_score.notes,
+            )
+        request.status = RequestStatus.APPROVED
+        request.decided_by = decided_by
+        request.decided_at = datetime.now(timezone.utc)
+        self._repo.update_change_request(request)
+        return request
+
+    def deny_change_request(
+        self, request_id: UUID, decided_by: UUID, notes: Optional[str] = None
+    ) -> ChangeRequest:
+        request = self._repo.get_change_request(request_id)
+        if request is None:
+            raise ValueError(f"ChangeRequest {request_id} not found")
+        if request.status != RequestStatus.PENDING:
+            raise ValueError("This request has already been decided")
+        request.status = RequestStatus.DENIED
+        request.decided_by = decided_by
+        request.decided_at = datetime.now(timezone.utc)
+        if notes:
+            request.notes = f"{request.notes}\n[denied] {notes}".strip()
+        self._repo.update_change_request(request)
+        return request
 
     def list_overdue_goal_setting(
         self, older_than_days: int, as_of: Optional[date] = None
