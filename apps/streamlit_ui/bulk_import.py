@@ -25,13 +25,18 @@ from party_identity.domain import Party
 
 from assignment.domain import DuplicateAssignment
 
+SHEET_ADMINS = "Admins"
 SHEET_AGENTS = "Agents"
 SHEET_MANAGERS = "Managers"
 SHEET_ASSIGNMENTS = "Assignments"
 SHEET_CRITERIA_LIBRARY = "Criteria Library"
 
+ADMIN_COLUMNS = ["name", "email"]
 AGENT_COLUMNS = ["name", "email"]
-MANAGER_COLUMNS = ["name", "email"]
+# "function" is optional (e.g. "Engineering", "Design") — a grouping label
+# stored on Party.attributes["function"], not a separate concept the
+# rest of the app enforces or reads yet.
+MANAGER_COLUMNS = ["name", "email", "function"]
 ASSIGNMENT_COLUMNS = [
     "agent_name",
     "manager_name",
@@ -43,8 +48,9 @@ ASSIGNMENT_COLUMNS = [
 CRITERIA_LIBRARY_COLUMNS = ["name", "description"]
 
 _EXAMPLE_ROWS = {
+    SHEET_ADMINS: [["Priya", "priya@example.com"]],
     SHEET_AGENTS: [["Casey", "casey@example.com"], ["Dana", ""]],
-    SHEET_MANAGERS: [["Alex", "alex@example.com"], ["Bailey", ""]],
+    SHEET_MANAGERS: [["Alex", "alex@example.com", "Engineering"], ["Bailey", "", "Design"]],
     SHEET_ASSIGNMENTS: [
         [
             "Casey",
@@ -67,6 +73,7 @@ def build_template_workbook() -> bytes:
     wb = Workbook()
     wb.remove(wb.active)
     sheets = {
+        SHEET_ADMINS: ADMIN_COLUMNS,
         SHEET_AGENTS: AGENT_COLUMNS,
         SHEET_MANAGERS: MANAGER_COLUMNS,
         SHEET_ASSIGNMENTS: ASSIGNMENT_COLUMNS,
@@ -90,6 +97,7 @@ def build_template_workbook() -> bytes:
 
 @dataclass
 class ParsedWorkbook:
+    admins: list[dict[str, Any]] = field(default_factory=list)
     agents: list[dict[str, Any]] = field(default_factory=list)
     managers: list[dict[str, Any]] = field(default_factory=list)
     assignments: list[dict[str, Any]] = field(default_factory=list)
@@ -159,6 +167,14 @@ def parse_workbook(file) -> ParsedWorkbook:
 
     result = ParsedWorkbook()
 
+    if SHEET_ADMINS in sheets:
+        admin_rows, errs = _sheet_rows(sheets, SHEET_ADMINS, ["name"])
+        result.sheet_errors += errs
+        result.admins = [
+            {"row": r["_row_number"], "name": _clean_str(r.get("name")), "email": _clean_str(r.get("email"))}
+            for r in admin_rows
+        ]
+
     agent_rows, errs = _sheet_rows(sheets, SHEET_AGENTS, ["name"])
     result.sheet_errors += errs
     result.agents = [
@@ -169,7 +185,12 @@ def parse_workbook(file) -> ParsedWorkbook:
     manager_rows, errs = _sheet_rows(sheets, SHEET_MANAGERS, ["name"])
     result.sheet_errors += errs
     result.managers = [
-        {"row": r["_row_number"], "name": _clean_str(r.get("name")), "email": _clean_str(r.get("email"))}
+        {
+            "row": r["_row_number"],
+            "name": _clean_str(r.get("name")),
+            "email": _clean_str(r.get("email")),
+            "function": _clean_str(r.get("function")),
+        }
         for r in manager_rows
     ]
 
@@ -221,7 +242,13 @@ class ImportResult:
 
 
 def _find_or_create_party(
-    party_repo, party_type: str, name: str, email: str, results: list[RowResult], row: int
+    party_repo,
+    party_type: str,
+    name: str,
+    email: str,
+    results: list[RowResult],
+    row: int,
+    extra_attributes: Optional[dict[str, Any]] = None,
 ) -> Optional[Party]:
     if not name:
         results.append(RowResult(party_type, row, "error", "Missing name"))
@@ -247,7 +274,10 @@ def _find_or_create_party(
         )
         return None
 
-    party = Party(party_type=party_type, display_name=name, attributes={"email": email} if email else {})
+    attributes = dict(extra_attributes or {})
+    if email:
+        attributes["email"] = email
+    party = Party(party_type=party_type, display_name=name, attributes=attributes)
     party_repo.add(party)
     results.append(RowResult(party_type, row, "created", f"{name}: created"))
     return party
@@ -256,10 +286,17 @@ def _find_or_create_party(
 def apply_import(services, parsed: ParsedWorkbook) -> ImportResult:
     results: list[RowResult] = []
 
+    for a in parsed.admins:
+        _find_or_create_party(
+            services.party_repo, "functional_owner", a["name"], a["email"], results, a["row"]
+        )
     for a in parsed.agents:
         _find_or_create_party(services.party_repo, "agent", a["name"], a["email"], results, a["row"])
     for m in parsed.managers:
-        _find_or_create_party(services.party_repo, "manager", m["name"], m["email"], results, m["row"])
+        extra = {"function": m["function"]} if m.get("function") else None
+        _find_or_create_party(
+            services.party_repo, "manager", m["name"], m["email"], results, m["row"], extra
+        )
 
     agents_by_name = {p.display_name: p for p in services.party_repo.list_by_type("agent")}
     managers_by_name = {p.display_name: p for p in services.party_repo.list_by_type("manager")}

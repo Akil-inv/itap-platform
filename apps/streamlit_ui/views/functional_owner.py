@@ -512,11 +512,15 @@ def _bulk_setup(services) -> None:
         return
 
     st.write(
-        f"Found **{len(parsed.agents)}** Agent row(s), "
+        f"Found **{len(parsed.admins)}** Admin row(s), "
+        f"**{len(parsed.agents)}** Agent row(s), "
         f"**{len(parsed.managers)}** Manager row(s), "
         f"**{len(parsed.assignments)}** Assignment row(s)."
     )
     with st.expander("Preview parsed rows", expanded=True):
+        if parsed.admins:
+            st.markdown("**Admins**")
+            st.dataframe(parsed.admins, width='stretch')
         if parsed.agents:
             st.markdown("**Agents**")
             st.dataframe(parsed.agents, width='stretch')
