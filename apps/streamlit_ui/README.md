@@ -28,6 +28,46 @@ the landing page's picker. Setting it to `false` removes the one-click
 deployment before real auth exists, not a real security boundary (the
 underlying service calls still have no auth of their own).
 
+## Bulk Setup (`bulk_import.py`)
+
+Functional Owner's "Bulk Setup" tab: upload an Excel workbook to create
+Agents, Managers, and Assignments (with optional goals + scoring
+criteria) in one pass, instead of one form submission per row. A
+two-phase flow — **parse then confirm** — so a bad file can never
+silently create garbage: nothing is written until you've seen the
+preview and clicked Confirm.
+
+**Template** (`Download template (.xlsx)` button, generated on the fly,
+no bundled file to keep in sync):
+- `Agents` / `Managers`: `name` (required), `email` (optional)
+- `Assignments`: `agent_name`, `manager_name`, `start_date` (required);
+  `end_date`, `goals`, `criteria` (optional). `criteria` is
+  semicolon-separated (e.g. `Communication; Technical Skill; Ownership`)
+  — matches `GoalSetting.criteria`, the lightweight scoring-rubric
+  checklist (see `capabilities/assignment`).
+- `Criteria Library`: `name`, `description` — a reference sheet only,
+  not validated against; documents what a criterion means without
+  forcing every row to repeat it.
+
+**Idempotent re-upload**: Agents/Managers are matched against existing
+Parties by email first, then by exact name if unambiguous — re-uploading
+the same workbook (e.g. after adding a new row) reuses existing people
+instead of creating duplicates, and a row that would duplicate an active
+Assignment is skipped with a clear message rather than erroring the
+whole batch. Covered by `test_bulk_import.py`.
+
+**A real bug this surfaced, worth knowing about:** all tabs render in
+one Streamlit script pass, in a fixed left-to-right order. Org
+Structure/All Assignments (earlier tabs) are computed *before* Bulk
+Setup (a later tab) runs its import — so a successful import can't
+retroactively update what already rendered earlier in the same pass.
+The fix is `st.rerun()` after a successful import, with the result
+message stashed in `st.session_state` first so it survives the rerun
+instead of vanishing with it (the "flash message" pattern). Any new
+mutating action added anywhere in this app needs the same treatment —
+grep for `st.rerun()` immediately after a `services.*` write call as the
+convention to follow.
+
 Onboarding forms (`home.py`'s setup expander, and the Functional Owner's
 "Onboard & Assign") include an optional email field, stored under
 `Party.attributes["email"]` — the field a future SSO integration would
@@ -127,6 +167,14 @@ to `app.py`, `services.py`, or `views/`:
 
 ```bash
 rm -f smoke_test.db && python smoke_test.py
+```
+
+`test_bulk_import.py` is separate — it tests `bulk_import.py`'s parsing
+and import logic directly (template round-trip, missing sheet/column
+detection, create vs. reuse vs. skip behavior), not the UI wiring:
+
+```bash
+rm -f test_bulk_import.db && python test_bulk_import.py
 ```
 
 ## Visual verification (`screenshot.py`)

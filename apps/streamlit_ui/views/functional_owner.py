@@ -7,6 +7,7 @@ from assignment.domain import DuplicateAssignment
 from party_identity.domain import Party
 from rbac_scope import Viewer
 
+import bulk_import
 import org_tree
 from party_helpers import disambiguate_labels, safe_get_name
 
@@ -20,6 +21,7 @@ def render(services, viewer: Viewer, current_party: Party) -> None:
             "All Assignments",
             "Org Structure",
             "Onboard & Assign",
+            "Bulk Setup",
             "Overdue",
             "Manager Handoff",
             "Consolidated Scores",
@@ -33,10 +35,12 @@ def render(services, viewer: Viewer, current_party: Party) -> None:
     with tabs[2]:
         _onboard_and_assign(services)
     with tabs[3]:
-        _overdue(services, viewer)
+        _bulk_setup(services)
     with tabs[4]:
-        _manager_handoff(services, viewer)
+        _overdue(services, viewer)
     with tabs[5]:
+        _manager_handoff(services, viewer)
+    with tabs[6]:
         _consolidated_scores(services, viewer)
 
 
@@ -255,6 +259,91 @@ def _manager_handoff(services, viewer: Viewer) -> None:
             )
             st.success(f"Reassigned {len(new_assignments)} Agent(s).")
             st.rerun()
+
+
+def _bulk_setup(services) -> None:
+    st.caption(
+        "Upload an Excel workbook to set up Agents, Managers, and "
+        "Assignments — with optional goals and scoring criteria — in one "
+        "pass. Nothing is created until you review the preview and "
+        "confirm."
+    )
+
+    # Show the previous import's result (if any) before anything else.
+    # All tabs render in one script pass, in a fixed order — Org
+    # Structure/All Assignments are computed BEFORE this tab runs, so an
+    # import here can't retroactively update what already rendered
+    # earlier in the same pass. A st.rerun() below forces a fresh pass
+    # where every tab recomputes against the post-import data; stashing
+    # the result in session_state first is what lets the "Import
+    # complete" message survive that rerun instead of vanishing with it.
+    pending_result = st.session_state.pop("bulk_import_result", None)
+    if pending_result is not None:
+        _render_import_result(pending_result)
+
+    st.download_button(
+        "Download template (.xlsx)",
+        data=bulk_import.build_template_workbook(),
+        file_name="itap_bulk_setup_template.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+    uploaded = st.file_uploader("Upload filled-in workbook", type=["xlsx"])
+    if uploaded is None:
+        st.session_state.pop("bulk_import_parsed", None)
+        st.session_state.pop("bulk_import_cache_key", None)
+        return
+
+    cache_key = (uploaded.name, uploaded.size)
+    if st.session_state.get("bulk_import_cache_key") != cache_key:
+        try:
+            parsed = bulk_import.parse_workbook(uploaded)
+        except Exception as e:
+            st.error(f"Could not read this file: {e}")
+            return
+        st.session_state["bulk_import_cache_key"] = cache_key
+        st.session_state["bulk_import_parsed"] = parsed
+
+    parsed = st.session_state["bulk_import_parsed"]
+
+    if parsed.sheet_errors:
+        st.error("This workbook doesn't match the expected template:")
+        for e in parsed.sheet_errors:
+            st.write(f"- {e}")
+        return
+
+    st.write(
+        f"Found **{len(parsed.agents)}** Agent row(s), "
+        f"**{len(parsed.managers)}** Manager row(s), "
+        f"**{len(parsed.assignments)}** Assignment row(s)."
+    )
+    with st.expander("Preview parsed rows", expanded=True):
+        if parsed.agents:
+            st.markdown("**Agents**")
+            st.dataframe(parsed.agents, width='stretch')
+        if parsed.managers:
+            st.markdown("**Managers**")
+            st.dataframe(parsed.managers, width='stretch')
+        if parsed.assignments:
+            st.markdown("**Assignments**")
+            st.dataframe(parsed.assignments, width='stretch')
+
+    if st.button("Confirm and import", type="primary"):
+        result = bulk_import.apply_import(services, parsed)
+        st.session_state.pop("bulk_import_parsed", None)
+        st.session_state.pop("bulk_import_cache_key", None)
+        st.session_state["bulk_import_result"] = result
+        st.rerun()
+
+
+def _render_import_result(result) -> None:
+    counts = result.counts()
+    st.success("Import complete: " + ", ".join(f"{v} {k}" for k, v in counts.items()))
+    for r in result.row_results:
+        if r.status == "error":
+            st.error(f"[{r.sheet} row {r.row}] {r.message}")
+        elif r.status == "skipped":
+            st.warning(f"[{r.sheet} row {r.row}] {r.message}")
 
 
 def _consolidated_scores(services, viewer: Viewer) -> None:

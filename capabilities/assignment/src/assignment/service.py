@@ -48,9 +48,13 @@ class AssignmentService:
         self._repo.add(assignment)
         return assignment
 
-    def record_goal_setting(self, assignment_id: UUID, goals: str) -> GoalSetting:
+    def record_goal_setting(
+        self, assignment_id: UUID, goals: str, criteria: Optional[list[str]] = None
+    ) -> GoalSetting:
         self._repo.get(assignment_id)  # raises AssignmentNotFound if missing
-        goal_setting = GoalSetting(assignment_id=assignment_id, goals=goals)
+        goal_setting = GoalSetting(
+            assignment_id=assignment_id, goals=goals, criteria=criteria or []
+        )
         self._repo.add_goal_setting(goal_setting)
         return goal_setting
 

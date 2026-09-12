@@ -147,6 +147,31 @@ def test_list_by_agent_and_manager(assignment_repo):
     assert [a.id for a in assignment_repo.list_by_manager(manager_id)] == [mine.id]
 
 
+def test_goal_setting_criteria_round_trips(assignment_repo):
+    assignment = _make_assignment()
+    assignment_repo.add(assignment)
+
+    assignment_repo.add_goal_setting(
+        GoalSetting(
+            assignment_id=assignment.id,
+            goals="Ship the onboarding module",
+            criteria=["Communication", "Technical Skill", "Ownership"],
+        )
+    )
+
+    fetched = assignment_repo.get_goal_setting(assignment.id)
+    assert fetched.criteria == ["Communication", "Technical Skill", "Ownership"]
+
+
+def test_goal_setting_criteria_defaults_to_empty_list(assignment_repo):
+    assignment = _make_assignment()
+    assignment_repo.add(assignment)
+
+    assignment_repo.add_goal_setting(GoalSetting(assignment_id=assignment.id, goals="Learn X"))
+
+    assert assignment_repo.get_goal_setting(assignment.id).criteria == []
+
+
 def test_list_active_without_goal_setting(assignment_repo):
     overdue = _make_assignment(start_date=date(2026, 1, 1))
     has_goals = _make_assignment(start_date=date(2026, 1, 1))

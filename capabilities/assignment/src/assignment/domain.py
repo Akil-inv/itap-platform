@@ -66,11 +66,19 @@ class GoalSetting:
     so the system can remind the manager (see AssignmentRepo.
     list_active_without_goal_setting), and it IS required before closure
     (see AssignmentService.close_assignment) — closing without it would
-    mean scoring against goals that were never set."""
+    mean scoring against goals that were never set.
+
+    `criteria` is an optional structured checklist (e.g. ["Communication",
+    "Technical Skill", "Ownership"]) — a lightweight rubric to assess
+    against at closure. Deliberately not a separate per-criterion score:
+    closure still records one objective_score + subjective_notes; criteria
+    just make explicit *what* that score should be judged against.
+    """
 
     assignment_id: UUID
     goals: str
     id: UUID = field(default_factory=uuid4)
+    criteria: list[str] = field(default_factory=list)
     set_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 

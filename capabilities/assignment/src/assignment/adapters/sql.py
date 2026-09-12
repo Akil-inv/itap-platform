@@ -22,6 +22,7 @@ from typing import Optional
 from uuid import UUID
 
 from sqlalchemy import (
+    JSON,
     Column,
     Connection,
     Date,
@@ -72,6 +73,7 @@ goal_settings_table = Table(
     Column("id", String(36), primary_key=True),
     Column("assignment_id", String(36), nullable=False, unique=True, index=True),
     Column("goals", Text, nullable=False),
+    Column("criteria", JSON, nullable=False, default=list),
     Column("set_at", DateTime(timezone=True), nullable=False),
 )
 
@@ -225,6 +227,7 @@ class SqlAssignmentRepo:
                     id=str(goal_setting.id),
                     assignment_id=str(goal_setting.assignment_id),
                     goals=goal_setting.goals,
+                    criteria=goal_setting.criteria,
                     set_at=goal_setting.set_at,
                 )
             )
@@ -242,6 +245,7 @@ class SqlAssignmentRepo:
             id=UUID(row["id"]),
             assignment_id=UUID(row["assignment_id"]),
             goals=row["goals"],
+            criteria=list(row["criteria"] or []),
             set_at=row["set_at"],
         )
 

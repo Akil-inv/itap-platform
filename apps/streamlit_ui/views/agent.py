@@ -39,6 +39,8 @@ def _assignment_journey(services, viewer: Viewer, assignment) -> None:
             st.caption("Your manager hasn't recorded goal setting yet.")
         else:
             st.write(goal_setting.goals)
+            if goal_setting.criteria:
+                st.caption("Scoring criteria: " + ", ".join(goal_setting.criteria))
 
     closure = services.scope.get_closure_record(viewer, assignment.id)
     with st.container(border=True):

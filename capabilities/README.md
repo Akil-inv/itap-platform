@@ -22,7 +22,7 @@ Each subdirectory here is one domain-agnostic capability block from
 | # | Directory | Status |
 |---|---|---|
 | 1 | `party_identity/` | Scaffolded — domain model, `PartyRepo` port, in-memory + SQL adapters, contract tests passing |
-| 2/3 | `assignment/` | Built directly for ITAP (assignment lifecycle + rule-guarded transitions + goal setting + closure scoring + reverse feedback + administrative closure paths + optimistic concurrency), 55 tests passing across in-memory + SQL adapters. Not yet generalized — see note below. |
+| 2/3 | `assignment/` | Built directly for ITAP (assignment lifecycle + rule-guarded transitions + goal setting + closure scoring + reverse feedback + administrative closure paths + optimistic concurrency), 59 tests passing across in-memory + SQL adapters. Not yet generalized — see note below. |
 | 4 | process orchestration | Deferred — no timer/reminder dispatch yet; `list_overdue_goal_setting` and `list_overdue_closure` exist as the queries a future job would poll |
 | 5 | scoring & closure | Folded into `assignment/` for now (ClosureRecord, ReverseFeedback) |
 | 6 | `rbac_scope/` | Built — `ScopedAssignmentQueries`: 3-way visibility (Functional Owner / Manager / Agent) computed from relationship to the record, not per-role queries. 13 tests passing. Depends on `assignment` at runtime (see its README for install). |

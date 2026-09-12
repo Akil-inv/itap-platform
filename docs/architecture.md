@@ -153,7 +153,7 @@ runnable against Postgres with an in-process rule adapter).
    manager), optimistic concurrency (a `version` column; a write against
    a stale copy raises `ConcurrentModification` instead of silently
    overwriting a concurrent change), and overdue-goal-setting /
-   overdue-closure queries for a future reminder job. 55 tests passing
+   overdue-closure queries for a future reminder job, and an optional structured `criteria` checklist on GoalSetting (a lightweight scoring rubric, consumed by the bulk-import feature). 59 tests passing
    across in-memory + SQL adapters. Built directly with ITAP's
    vocabulary — see "Decision" note above.
 
@@ -224,6 +224,37 @@ runnable against Postgres with an in-process rule adapter).
 - `ITAP_DEV_MODE=false` hides the identity-switching UI but is a safety
   valve, not a security boundary — the underlying service calls have no
   auth of their own yet. Real auth remains the actual fix.
+
+### Bulk Setup + a real Streamlit ordering bug (2026-09-12, same day)
+
+`apps/streamlit_ui/bulk_import.py`: upload an Excel workbook (Agents,
+Managers, Assignments, Criteria Library sheets — template generated on
+demand, not a bundled file) to set up a baseline in one pass instead of
+one form per row. Two-phase parse-then-confirm, matches by email/name to
+stay idempotent on re-upload, per-row errors don't abort the batch. This
+motivated `GoalSetting.criteria: list[str]` — a lightweight, optional
+scoring-rubric checklist attached to goal setting (closure still records
+one objective_score + notes; criteria just make explicit what that score
+should be judged against — the "full per-criterion rubric" alternative
+was considered and deliberately deferred).
+
+Building this surfaced a genuine Streamlit bug worth documenting: **all
+tabs render in one script pass, in a fixed order.** Org Structure/All
+Assignments are earlier tabs than Bulk Setup, so within a single pass
+they're computed *before* an import in Bulk Setup runs — a successful
+import couldn't retroactively update what already rendered earlier in
+that same pass. It looked exactly like a caching bug (stale content
+persisting in-session, correct after a hard reload) but wasn't — the
+data was correct, the render order was wrong. Fixed with `st.rerun()`
+after a successful import, stashing the result in `st.session_state`
+first so the confirmation message survives the rerun instead of
+vanishing with it. Every other mutation in the app already had
+`st.rerun()` immediately after its write — this was the one place that
+didn't, because the flash-message need wasn't obvious until visual
+verification (a fresh Playwright screenshot after import, compared
+against one after a hard page reload) caught the discrepancy. Convention
+going forward: any new mutating action needs `st.rerun()` right after
+its write.
 
 ### Resolved via scenario-based gap analysis (2026-09-12)
 

@@ -44,11 +44,20 @@ def _assignment_journey(services, viewer: Viewer, assignment) -> None:
             st.warning("No goal setting recorded yet — nothing to assess against at closure.")
             with st.form(f"goals_{assignment.id}"):
                 goals = st.text_area("Goals (agreed with the agent)")
+                criteria_text = st.text_input(
+                    "Scoring criteria (semicolon-separated, optional)",
+                    placeholder="Communication; Technical Skill; Ownership",
+                )
                 if st.form_submit_button("Record goal setting") and goals:
-                    services.assignment_service.record_goal_setting(assignment.id, goals)
+                    criteria = [c.strip() for c in criteria_text.split(";") if c.strip()]
+                    services.assignment_service.record_goal_setting(
+                        assignment.id, goals, criteria=criteria
+                    )
                     st.rerun()
         else:
             st.write(goal_setting.goals)
+            if goal_setting.criteria:
+                st.caption("Scoring criteria: " + ", ".join(goal_setting.criteria))
 
     if assignment.state.value == "active":
         with st.container(border=True):

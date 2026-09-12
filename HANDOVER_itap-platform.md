@@ -173,12 +173,32 @@ Last updated: 2026-09-11
   smoke test plus real Playwright screenshots of the duplicate-assignment
   error, the new Withdraw tab, Manager Handoff, and the split
   Overdue-goal-setting/Overdue-closure view.
+- Bulk Setup (2026-09-12, same day): `bulk_import.py` + a new
+  Functional-Owner-only tab — upload an Excel workbook to create Agents,
+  Managers, and Assignments (with optional goals + scoring criteria) in
+  one pass, template generated on demand, two-phase parse-then-confirm
+  so a bad file can't silently create garbage, idempotent re-upload
+  (matches existing people by email/name, skips duplicate assignments).
+  Added `GoalSetting.criteria: list[str]` (lightweight rubric checklist,
+  closure still records one score) to support it — `capabilities/assignment`
+  now at 59 tests. Also fixed a genuine Streamlit bug this surfaced: all
+  tabs render in one script pass in a fixed order, so an import in a
+  later tab (Bulk Setup) couldn't retroactively update an earlier tab
+  (Org Structure) already rendered in the same pass — looked exactly
+  like a caching bug (correct after a hard reload, stale in-session)
+  until a fresh-vs-reloaded Playwright screenshot comparison proved it
+  wasn't. Fixed with `st.rerun()` + a session-state flash message; see
+  "Bulk Setup + a real Streamlit ordering bug" in `docs/architecture.md`
+  for the convention this sets for any future mutating action. New
+  `apps/streamlit_ui/test_bulk_import.py` covers the parsing/import
+  logic directly (not just UI wiring via smoke_test.py).
 
 ### In Progress
 
 - Nothing mid-flight; the party_identity + assignment + rbac_scope +
   Streamlit UI slice (including the journey/theme/org-tree/landing-page
-  pass and the scenario-based gap-fix pass) is complete and demoable.
+  pass, the scenario-based gap-fix pass, and Bulk Setup) is complete and
+  demoable.
 
 ### Next
 
