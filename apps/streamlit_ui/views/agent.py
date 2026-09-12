@@ -56,6 +56,7 @@ from rbac_scope import Viewer
 import journey_curve
 from journey import render_stepper, stage_index
 from party_helpers import safe_get_name
+from person_row import avatar_html
 
 
 def render(services, viewer: Viewer, current_party: Party) -> None:
@@ -89,16 +90,10 @@ def _profile_tab(services, current_party: Party) -> None:
 
     header_cols = st.columns([1, 5])
     with header_cols[0]:
-        if profile and profile.photo_url:
-            st.image(profile.photo_url, width=88)
-        else:
-            st.markdown(
-                '<div style="width:72px;height:72px;border-radius:50%;'
-                'background:#EAF1F8;display:flex;align-items:center;'
-                'justify-content:center;font-size:1.6rem;font-weight:700;'
-                'color:#333F6B;">' + current_party.display_name[:1].upper() + "</div>",
-                unsafe_allow_html=True,
-            )
+        st.markdown(
+            avatar_html(current_party.display_name, profile.photo_url if profile else None, large=True),
+            unsafe_allow_html=True,
+        )
     with header_cols[1]:
         st.subheader(current_party.display_name)
         st.caption("Associate")

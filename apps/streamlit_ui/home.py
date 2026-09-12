@@ -16,66 +16,39 @@ from rbac_scope import Role
 
 from party_helpers import disambiguate_labels
 from role_labels import ROLE_DISPLAY_NAME
+from tokens import TOKENS
 
 # Descriptions/colors for the three roles on the sign-in page. Names come
 # from role_labels.ROLE_DISPLAY_NAME so the header (app.py) calls each role
-# the same thing.
+# the same thing. Colors come from tokens.ROLE — the one place the three
+# role identity colors are defined.
 ROLE_SECTIONS = [
     (
         Role.FUNCTIONAL_OWNER,
         ROLE_DISPLAY_NAME[Role.FUNCTIONAL_OWNER],
         "Runs the whole program: onboarding, assignments, org-wide oversight.",
-        "#333F6B",
+        TOKENS.role["functional_owner"],
     ),
     (
         Role.MANAGER,
         ROLE_DISPLAY_NAME[Role.MANAGER],
         "Sets goals, tracks and closes out the associates on their team.",
-        "#16707F",
+        TOKENS.role["manager"],
     ),
     (
         Role.AGENT,
         ROLE_DISPLAY_NAME[Role.AGENT],
         "Tracks their own goals, journey, and gives feedback.",
-        "#3F7D57",
+        TOKENS.role["agent"],
     ),
 ]
 
-_CSS = """
-<style>
-.itap-pitch-eyebrow {
-    font-size: 12.5px; font-weight: 700; letter-spacing: 0.08em;
-    text-transform: uppercase; color: #333F6B;
-}
-.itap-pitch h1 {
-    font-family: "Libre Franklin", "Source Sans 3", sans-serif;
-    font-size: 2.4rem; font-weight: 800; letter-spacing: -0.01em;
-    text-wrap: balance; margin: 10px 0 0 0; color: #1B2233;
-}
-.itap-pitch p.lede { color: #5B6475; font-size: 1.02rem; max-width: 46ch; margin-top: 14px; }
-.itap-role-row {
-    display: flex; align-items: flex-start; gap: 12px;
-    padding: 12px 14px; background: #FFFFFF; border: 1px solid #DEE2E9;
-    border-radius: 10px; margin-top: 10px;
-    box-shadow: 0 1px 2px rgba(27,34,51,0.04), 0 6px 20px rgba(27,34,51,0.06);
-}
-.itap-role-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; }
-.itap-role-row .rname { font-weight: 600; font-size: 13.5px; }
-.itap-role-row .rdesc { color: #5B6475; font-size: 13px; }
-.itap-login-wordmark {
-    font-family: "Libre Franklin", "Source Sans 3", sans-serif;
-    font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em;
-}
-.itap-login-wordmark span { color: #333F6B; }
-.itap-login-sub { color: #5B6475; font-size: 13.5px; margin-top: 4px; margin-bottom: 4px; }
-.itap-role-heading { font-weight: 700; font-size: 13.5px; margin-top: 4px; }
-.itap-role-heading .dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px; }
-</style>
-"""
-
-
 def render(services) -> None:
-    st.markdown(_CSS, unsafe_allow_html=True)
+    # Styling for .itap-pitch / .itap-role-row / .itap-login-wordmark etc.
+    # now lives in theme.py's single global stylesheet (folded in from
+    # this module's former local _CSS block) — theme.inject() is called
+    # once in app.py before any view renders, so nothing needs injecting
+    # here.
     st.write("")
     st.write("")
 

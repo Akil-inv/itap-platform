@@ -544,3 +544,45 @@ pip install playwright  # not in requirements.txt — dev-only
 streamlit run app.py --server.headless true --server.port 8765 &
 python screenshot.py   # saves PNGs to /tmp/itap_screens
 ```
+
+## Design tokens & shared components (design-system pass)
+
+`tokens.py` is the single source of truth for every color, type size,
+spacing value, radius, and shadow used in this UI — a light-mode neutral
+gray ramp, one primary/brand color (`#4C78A8`), semantic
+success/warning/error/info colors (each with a `_subtle` tint for
+badges), the three role identity colors (admin navy/manager teal/
+associate green, kept exactly as they were), a compact 12–24px type
+scale, a spacing scale, a radius scale, and an elevation scale
+(`resting`/`hover`/`recessed`). Before this pass, `theme.py`, `home.py`,
+`battery.py`, and every `views/*.py` file picked their own hex colors,
+paddings, and radii independently — nothing guaranteed two "same
+meaning" things (two status chips, two card borders) actually matched.
+Any new value should be added to `tokens.py`, not hardcoded at the call
+site.
+
+`theme.py` is the one place global CSS gets injected — it turns every
+token into a `--itap-*` CSS custom property on `:root`, then every rule
+(and any HTML fragment built elsewhere) consumes those variables. It
+also folds in what used to be `home.py`'s own separate inline
+stylesheet. `journey_curve.py`/`org_tree.py` render inside an isolated
+`st.iframe` document with no access to the page's CSS variables, so they
+import the raw Python constants from `tokens.py` directly instead.
+
+`person_row.py` is the shared "clickable person row" component — avatar
++ name + tenure meter inside one card, with trailing columns each caller
+fills with its own extra content (status chip, current-team label,
+score reveal). It replaced the previously duplicated, inconsistent row
+markup in the admin's Associates list (`views/functional_owner.py`) and
+the Manager's My Team list (`views/manager.py`) — the raw, centered
+`st.button`-in-a-box next to an unstyled battery bar that prompted this
+whole pass. `battery.py`'s tenure meter itself gained a real track
+(segments sit inside a subtle recessed capsule instead of floating
+loose), bigger segments, and a hover tooltip per segment (its date
+range, "Current" for the active one) — its date/segment math is
+unchanged, only the rendered markup/CSS.
+
+A new list row, status pill, or other repeated visual pattern should
+become its own component module (follow `person_row.py`'s shape) rather
+than being re-typed per view — see `docs/architecture.md`'s "Design
+tokens & shared components" section for the full writeup.

@@ -16,17 +16,19 @@ flex-wrap in the CSS.
 """
 from __future__ import annotations
 
+import html
 import math
 from datetime import date, timedelta
 from typing import Optional
 from uuid import UUID
 
 from assignment.domain import Assignment, AssignmentKind
+from tokens import TOKENS
 
 SEGMENT_DAYS = 91  # ~3 months
-CURRENT_COLOR = "#3F7D57"  # theme green
-GAP_COLOR = "#D9DEE6"
-PAST_STINT_PALETTE = ["#4C78A8", "#8E5A9E", "#B9791A", "#C0432F", "#16707F", "#333F6B"]
+CURRENT_COLOR = TOKENS.battery["current"]
+GAP_COLOR = TOKENS.battery["gap"]
+PAST_STINT_PALETTE = TOKENS.battery["past_palette"]
 
 
 def primary_assignments(all_assignments: list[Assignment]) -> list[Assignment]:
@@ -68,30 +70,64 @@ def build_segments(primaries: list[Assignment], today: Optional[date] = None) ->
     return segments
 
 
+def _segment_bounds(primaries: list[Assignment], today: date) -> list[tuple[date, date]]:
+    """The (start, end) date range for each segment `build_segments`
+    produces, in the same order — recomputed here rather than changed on
+    `build_segments` itself (its date/segment math is unchanged; this
+    just mirrors the same loop far enough to label each segment for the
+    tooltip)."""
+    if not primaries:
+        return []
+    earliest = primaries[0].start_date
+    total_days = max((today - earliest).days, 1)
+    n_segments = max(1, math.ceil(total_days / SEGMENT_DAYS))
+    bounds = []
+    for i in range(n_segments):
+        seg_start = earliest + timedelta(days=i * SEGMENT_DAYS)
+        seg_end = min(earliest + timedelta(days=(i + 1) * SEGMENT_DAYS), today)
+        bounds.append((seg_start, seg_end))
+    return bounds
+
+
 def render_html(all_assignments: list[Assignment], today: Optional[date] = None) -> str:
-    """Renders the battery bar as an HTML fragment (a row of colored
-    divs) — use with st.markdown(..., unsafe_allow_html=True). Empty
-    string if the Agent has never had a Primary Assignment."""
+    """Renders the battery bar as an HTML fragment — a track/capsule
+    ("meter") containing one colored segment per 3-month period, each
+    with a `title` attribute (hover tooltip) describing its date range
+    and, for the current segment, that it's ongoing. Use with
+    st.markdown(..., unsafe_allow_html=True). Empty string if the Agent
+    has never had a Primary Assignment.
+
+    Semantics are unchanged from before this pass: green = the current
+    Primary's stint, a distinct color per past Primary stint, gray/hatched
+    = a gap with no Primary active. Only the rendered markup/CSS changed —
+    see theme.py's `.itap-battery*` rules for the track styling."""
     primaries = primary_assignments(all_assignments)
     if not primaries:
         return ""
     today = today or date.today()
     segments = build_segments(primaries, today)
+    bounds = _segment_bounds(primaries, today)
     current = current_primary(primaries)
 
     color_by_id: dict[UUID, str] = {}
     palette_idx = 0
-    parts = ['<div class="itap-battery">']
-    for seg in segments:
+    parts = ['<div class="itap-battery-wrap"><div class="itap-battery">']
+    for seg, (seg_start, seg_end) in zip(segments, bounds):
         if seg is None:
-            color = GAP_COLOR
-        elif current is not None and seg.id == current.id:
+            title = html.escape(f"{seg_start.isoformat()} to {seg_end.isoformat()} — gap, no active Primary")
+            parts.append(f'<div class="itap-battery-seg itap-battery-seg--gap" title="{title}"></div>')
+            continue
+        if current is not None and seg.id == current.id:
             color = CURRENT_COLOR
+            title = html.escape(f"{seg_start.isoformat()} to {seg_end.isoformat()} — Current")
         else:
             if seg.id not in color_by_id:
                 color_by_id[seg.id] = PAST_STINT_PALETTE[palette_idx % len(PAST_STINT_PALETTE)]
                 palette_idx += 1
             color = color_by_id[seg.id]
-        parts.append(f'<div class="itap-battery-seg" style="background-color:{color};"></div>')
-    parts.append("</div>")
+            title = html.escape(f"{seg_start.isoformat()} to {seg_end.isoformat()}")
+        parts.append(
+            f'<div class="itap-battery-seg" style="background-color:{color};" title="{title}"></div>'
+        )
+    parts.append('</div></div>')
     return "".join(parts)

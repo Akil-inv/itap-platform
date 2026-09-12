@@ -17,12 +17,18 @@ import html
 
 import streamlit as st
 
+from tokens import TOKENS
+
 CARD_W, CARD_H = 150, 60
 TIER_Y = {"owner": 60, "manager": 230, "agent": 400}
+# This SVG is rendered inside an isolated st.iframe document (its own
+# `<html>`, no access to the page's CSS custom properties), so it
+# imports the raw token constants from tokens.py directly rather than
+# duplicating hex values here.
 COLORS = {
-    "owner": ("#3B4252", "#FFFFFF"),
-    "manager": ("#4C78A8", "#FFFFFF"),
-    "agent": ("#54A24B", "#FFFFFF"),
+    "owner": (TOKENS.role["functional_owner"], TOKENS.neutral[0]),
+    "manager": (TOKENS.primary["default"], TOKENS.neutral[0]),
+    "agent": (TOKENS.role["agent"], TOKENS.neutral[0]),
 }
 
 
@@ -99,15 +105,15 @@ def render(owners: list[tuple[str, str]], managers: list[tuple[str, str]],
 
     svg_parts.append("</svg>")
 
-    style = """
+    style = f"""
     <style>
-      body { margin: 0; }
-      .itap-edge-owner { stroke: #C7CDD6; stroke-width: 1.5; stroke-dasharray: 4 3; }
-      .itap-edge-manager { stroke: #94B4D6; stroke-width: 2.5; }
-      .itap-node { cursor: pointer; transition: opacity 0.15s ease; }
-      .itap-edge { transition: opacity 0.15s ease, stroke-width 0.15s ease; }
-      .itap-dim { opacity: 0.18; }
-      .itap-highlight { stroke-width: 4; }
+      body {{ margin: 0; }}
+      .itap-edge-owner {{ stroke: {TOKENS.neutral[300]}; stroke-width: 1.5; stroke-dasharray: 4 3; }}
+      .itap-edge-manager {{ stroke: {TOKENS.primary['default']}; stroke-width: 2.5; opacity: 0.65; }}
+      .itap-node {{ cursor: pointer; transition: opacity 0.15s ease; }}
+      .itap-edge {{ transition: opacity 0.15s ease, stroke-width 0.15s ease; }}
+      .itap-dim {{ opacity: 0.18; }}
+      .itap-highlight {{ stroke-width: 4; }}
     </style>
     """
 

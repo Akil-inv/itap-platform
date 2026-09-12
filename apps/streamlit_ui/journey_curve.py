@@ -14,6 +14,20 @@ from typing import Optional
 
 import streamlit as st
 
+from tokens import TOKENS
+
+# Rendered inside an isolated st.iframe document (no access to the page's
+# CSS custom properties), so raw token constants are imported directly
+# from tokens.py rather than duplicated as local hex literals.
+_TRACK_COLOR = TOKENS.neutral[300]
+_TRAVELED_COLOR = TOKENS.role["manager"]
+_PLAIN_COLOR = TOKENS.primary["default"]
+_DONE_COLOR = TOKENS.semantic["success"]
+_CURRENT_COLOR = TOKENS.role["manager"]
+_UPCOMING_FILL = TOKENS.neutral[0]
+_LABEL_COLOR = TOKENS.neutral[900]
+_SUBLABEL_COLOR = TOKENS.neutral[500]
+
 _WIDTH, _HEIGHT = 860, 210
 _MARGIN_X, _MARGIN_Y = 70, 34
 
@@ -138,16 +152,16 @@ def render(
 
     if progress is not None:
         svg.append(
-            f'<path d="{curve.full_path_d()}" fill="none" stroke="#D8DCE3" '
+            f'<path d="{curve.full_path_d()}" fill="none" stroke="{_TRACK_COLOR}" '
             f'stroke-width="4" stroke-dasharray="1 9" stroke-linecap="round"/>'
         )
         svg.append(
             f'<path d="{curve.traveled_path_d(progress)}" fill="none" '
-            f'stroke="#16707F" stroke-width="4" stroke-linecap="round"/>'
+            f'stroke="{_TRAVELED_COLOR}" stroke-width="4" stroke-linecap="round"/>'
         )
     else:
         svg.append(
-            f'<path d="{curve.full_path_d()}" fill="none" stroke="#4C78A8" '
+            f'<path d="{curve.full_path_d()}" fill="none" stroke="{_PLAIN_COLOR}" '
             f'stroke-width="4" stroke-linecap="round" opacity="0.5"/>'
         )
 
@@ -158,12 +172,12 @@ def render(
         else:
             status = "plain"
         fill = {
-            "done": "#2E8B4F",
-            "current": "#16707F",
-            "upcoming": "#FFFFFF",
-            "plain": "#4C78A8",
+            "done": _DONE_COLOR,
+            "current": _CURRENT_COLOR,
+            "upcoming": _UPCOMING_FILL,
+            "plain": _PLAIN_COLOR,
         }[status]
-        stroke = "#D8DCE3" if status == "upcoming" else fill
+        stroke = _TRACK_COLOR if status == "upcoming" else fill
         # sub_y clears the "you are here" marker's halo (radius 13,
         # centered on this same point when progress lands exactly on a
         # node) — the original -6 offset used to render the stage's
@@ -178,20 +192,20 @@ def render(
         )
         svg.append(
             f'<text x="{p.x:.1f}" y="{label_y:.1f}" text-anchor="middle" '
-            f'font-size="12.5" font-weight="700" fill="#1B2233">{_esc(name)}</text>'
+            f'font-size="12.5" font-weight="700" fill="{_LABEL_COLOR}">{_esc(name)}</text>'
         )
         if stage_subs[i]:
             svg.append(
                 f'<text x="{p.x:.1f}" y="{sub_y:.1f}" text-anchor="middle" '
-                f'font-size="11" fill="#8891A0">{_esc(stage_subs[i])}</text>'
+                f'font-size="11" fill="{_SUBLABEL_COLOR}">{_esc(stage_subs[i])}</text>'
             )
 
     if progress is not None:
         me = curve.point_at(progress)
-        svg.append(f'<circle cx="{me.x:.1f}" cy="{me.y:.1f}" r="13" fill="#16707F" opacity="0.18"/>')
+        svg.append(f'<circle cx="{me.x:.1f}" cy="{me.y:.1f}" r="13" fill="{_CURRENT_COLOR}" opacity="0.18"/>')
         svg.append(
-            f'<circle cx="{me.x:.1f}" cy="{me.y:.1f}" r="6.5" fill="#16707F" '
-            f'stroke="#FFFFFF" stroke-width="2.5"/>'
+            f'<circle cx="{me.x:.1f}" cy="{me.y:.1f}" r="6.5" fill="{_CURRENT_COLOR}" '
+            f'stroke="{TOKENS.neutral[0]}" stroke-width="2.5"/>'
         )
         # The marker can land right on top of a stage node (progress==0, or
         # a stage with no target duration) — place "You are here" on the
@@ -202,13 +216,13 @@ def render(
         you_are_here_y = me.y + 20 if label_above else me.y - 20
         svg.append(
             f'<text x="{me.x:.1f}" y="{you_are_here_y:.1f}" text-anchor="middle" '
-            f'font-size="11" font-weight="700" fill="#16707F">You are here</text>'
+            f'font-size="11" font-weight="700" fill="{_CURRENT_COLOR}">You are here</text>'
         )
 
     if markers:
         for m in markers:
             pt = curve.point_at(m["value"])
-            color = _esc(m.get("color", "#4C78A8"))
+            color = _esc(m.get("color", _PLAIN_COLOR))
             initial = _esc(str(m.get("initial", "?")))
             svg.append(
                 f'<circle cx="{pt.x:.1f}" cy="{pt.y + 16:.1f}" r="9" fill="{color}" '

@@ -109,7 +109,7 @@ except ValueError:
 header_left, header_right = st.columns([5, 1])
 with header_left:
     st.markdown(
-        f'<div style="font-size:0.85rem; color:#6B7280;">'
+        '<div style="font-size:var(--itap-font-size-xs); color:var(--itap-neutral-600);">'
         f"ITAP &nbsp;·&nbsp; Signed in as <strong>{current_party.display_name}</strong> "
         f"({ROLE_DISPLAY_NAME[viewer.role]})</div>",
         unsafe_allow_html=True,

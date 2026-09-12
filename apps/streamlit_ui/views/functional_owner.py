@@ -16,12 +16,17 @@ from catalog.domain import UploadKind
 from associate_status import AssociateStatus, classify, current_team_label
 from battery import render_html as render_battery_html
 from party_helpers import disambiguate_labels, safe_get_name
+from person_row import render_person_row
 from rotation_plan.domain import AlreadyEnrolled, RotationPlanNotFound
 from views import approvals as approvals_view
 from views import associate_portfolio
 from views import setup as setup_view
+from tokens import TOKENS
 
-_MARKER_COLORS = ["#54A24B", "#4C78A8", "#333F6B", "#B9791A", "#8E5A9E", "#C0432F"]
+# Distinct marker colors for plotting several Associates on one shared
+# rotation-plan curve — reuses the same battery past-stint palette
+# (plus the primary/brand color) rather than a separate, ad hoc list.
+_MARKER_COLORS = [TOKENS.semantic["success"], *TOKENS.battery["past_palette"]]
 
 
 def render(services, viewer: Viewer, current_party: Party) -> None:
@@ -118,46 +123,37 @@ def _associates_list(services, viewer: Viewer) -> None:
     }
 
     for agent, all_assignments, status in rows:
-        with st.container(border=True):
-            cols = st.columns([3, 2, 3, 1, 1])
-            with cols[0]:
-                highlighted = services.catalog_service.has_unseen_interest_change(agent.id)
-                if st.button(agent.display_name, key=f"open_{agent.id}", width="stretch"):
-                    st.session_state["selected_associate_id"] = str(agent.id)
-                    st.rerun()
-                badge = (
-                    '<span class="itap-interest-badge">interest changed</span>'
-                    if highlighted
-                    else ""
-                )
-                st.markdown(
-                    f'<span class="itap-status-chip {_STATUS_CSS_CLASS[status]}">'
-                    f"{status.value}</span>{badge}",
-                    unsafe_allow_html=True,
-                )
-            with cols[1]:
-                st.caption("Current team")
-                st.write(current_team_label(services, all_assignments))
-            with cols[2]:
-                st.caption("Tenure")
-                battery_html = render_battery_html(all_assignments)
-                if battery_html:
-                    st.markdown(battery_html, unsafe_allow_html=True)
-                else:
-                    st.caption("No history yet")
-            with cols[3]:
-                st.caption("Score")
-                # A bank-balance "reveal, then hide" interaction has no
-                # native Streamlit widget. st.popover is the closest
-                # idiomatic fit: the score renders only inside the
-                # popover's own overlay, collapsed again as soon as the
-                # user clicks elsewhere — nothing sits inline on the row
-                # by default, matching the spec's "never shown inline."
-                with st.popover("👁"):
-                    score = services.scope.consolidated_score(viewer, agent.id)
-                    st.write(f"{score:.2f}" if score is not None else "No closed episodes yet")
-            with cols[4]:
-                st.caption(" ")
+        highlighted = services.catalog_service.has_unseen_interest_change(agent.id)
+        battery_html = render_battery_html(all_assignments)
+        clicked, extra_cols = render_person_row(
+            key=f"assoc_{agent.id}",
+            display_name=agent.display_name,
+            sub_label=f"Current team: {current_team_label(services, all_assignments)}",
+            battery_html=battery_html,
+            extra_col_weights=[1.6, 0.8],
+        )
+        with extra_cols[0]:
+            badge = (
+                '<span class="itap-interest-badge">interest changed</span>' if highlighted else ""
+            )
+            st.markdown(
+                f'<span class="itap-status-chip {_STATUS_CSS_CLASS[status]}">'
+                f"{status.value}</span>{badge}",
+                unsafe_allow_html=True,
+            )
+        with extra_cols[1]:
+            # A bank-balance "reveal, then hide" interaction has no
+            # native Streamlit widget. st.popover is the closest
+            # idiomatic fit: the score renders only inside the
+            # popover's own overlay, collapsed again as soon as the
+            # user clicks elsewhere — nothing sits inline on the row
+            # by default, matching the spec's "never shown inline."
+            with st.popover("👁"):
+                score = services.scope.consolidated_score(viewer, agent.id)
+                st.write(f"{score:.2f}" if score is not None else "No closed episodes yet")
+        if clicked:
+            st.session_state["selected_associate_id"] = str(agent.id)
+            st.rerun()
 
     st.divider()
     with st.expander("Raw assignment table (all kinds, all history)"):

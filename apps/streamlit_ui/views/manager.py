@@ -24,6 +24,7 @@ from rbac_scope import Viewer
 import streamlit as st
 from assignment.domain import AssignmentKind
 from battery import render_html as render_battery_html
+from person_row import render_person_row
 from views import manager_associate
 
 
@@ -114,20 +115,18 @@ def _render_rows(services, agent_ids: list, empty_message: str) -> None:
         key=lambda p: p.display_name,
     )
     for agent in agents:
-        with st.container(border=True):
-            cols = st.columns([3, 3])
-            with cols[0]:
-                if st.button(agent.display_name, key=f"open_manager_{agent.id}", width="stretch"):
-                    st.session_state["selected_manager_associate_id"] = str(agent.id)
-                    st.rerun()
-            with cols[1]:
-                st.caption("Tenure")
-                all_assignments = services.assignment_repo.list_by_agent(agent.id)
-                battery_html = render_battery_html(all_assignments)
-                if battery_html:
-                    st.markdown(battery_html, unsafe_allow_html=True)
-                else:
-                    st.caption("No history yet")
-            # Deliberately no score column here — see this module's
-            # docstring: managers never see the aggregate score, not even
-            # hidden behind a reveal.
+        all_assignments = services.assignment_repo.list_by_agent(agent.id)
+        battery_html = render_battery_html(all_assignments)
+        # Deliberately no score column here — see this module's
+        # docstring: managers never see the aggregate score, not even
+        # hidden behind a reveal. One coherent card — avatar, name,
+        # tenure meter — rather than a raw button next to a floating
+        # battery bar.
+        clicked, _extra_cols = render_person_row(
+            key=f"manager_{agent.id}",
+            display_name=agent.display_name,
+            battery_html=battery_html,
+        )
+        if clicked:
+            st.session_state["selected_manager_associate_id"] = str(agent.id)
+            st.rerun()

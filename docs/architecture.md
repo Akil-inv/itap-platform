@@ -987,6 +987,88 @@ last year closes cleanly in one import despite the live 30-day gate.
 `bulk_import._apply_assignment_row` runs exactly this sequence; no
 `assignment` service or domain change was needed.
 
+### Design tokens & shared components (2026-09-12, design-system pass, Phase 6)
+
+Prompted by a real visual bug a user flagged from screenshots: the
+Manager's My Team list rendered each Associate as a full-width
+`st.button` (styled only by `theme.py`'s generic button CSS) sitting in
+its own bordered box, next to a separate, unstyled tenure "battery bar"
+— bare 9x18px colored `<div>`s with no track, border, or tooltip. Root
+cause: there was no central design-token system — hardcoded hex colors,
+spacing, and radii were scattered ad hoc across `theme.py`, `home.py`,
+`battery.py`, and every `views/*.py` file independently, so nothing
+guaranteed two "same meaning" things actually matched, and no visual
+pattern had been designed once as a reusable component. This is a pure
+visual/CSS/component-consistency pass — no business logic, service
+calls, routing, or information architecture changed, and the app stays
+pinned to its single light theme (`.streamlit/config.toml`) — no dark
+mode, no toggle.
+
+**`apps/streamlit_ui/tokens.py`** — the new single source of truth.
+Every color/spacing/radius/shadow/type value used anywhere in the UI
+should come from here going forward:
+
+- **Neutrals** — a light-mode gray ramp (`NEUTRAL[0..900]`) built by
+  varying lightness only, not by picking unrelated grays.
+- **Primary/brand** — the existing `#4C78A8` blue, unchanged, plus
+  hover/active/subtle variants derived from it.
+- **Semantic** (`success`/`warning`/`error`/`info`, each with a
+  `_subtle` tint) — consolidates the ad hoc greens/ambers that used to
+  differ slightly between the journey stepper, status chips, and the
+  battery bar for the same meaning.
+- **Role identity colors** (`functional_owner`/`manager`/`agent`) — the
+  three brand colors (`#333F6B`/`#16707F`/`#3F7D57`) kept byte-for-byte
+  as-is per product decision, just centralized.
+- **Battery palette**, **type scale** (12/14/16/18/20/24px per the
+  design system's compact-scale guidance), **spacing scale**,
+  **radius scale**, and an **elevation/shadow scale** (`resting` /
+  `hover` / `recessed` — never one heavy shadow reused everywhere).
+
+**`theme.py`** is now the one CSS injection point for the whole app. It
+turns every token into a real CSS custom property on `:root`
+(`--itap-color-...`, `--itap-space-...`, etc.), then every rule in the
+stylesheet — and any HTML fragment built elsewhere (`battery.py`,
+`person_row.py`) — consumes those variables instead of a hardcoded hex.
+`home.py`'s previously-separate inline `_CSS` block
+(`.itap-pitch`/`.itap-role-row`/`.itap-login-wordmark`) was folded in
+here — same visual identity and copy, one origin. Interaction states
+(hover/focus/disabled) are now consistent and token-driven across every
+button, and focus rings are explicit (`:focus-visible`) rather than
+left to browser defaults. `journey_curve.py`/`org_tree.py` render into
+an isolated `st.iframe` document that can't see the page's CSS
+variables, so they import the raw Python constants from `tokens.py`
+directly instead of duplicating hex values.
+
+**`battery.py`'s tenure meter** got a real track: segments now sit
+inside a subtle recessed capsule (`.itap-battery`) instead of floating
+loose next to a name, are bigger (18×14px vs. the old 9×18px slivers),
+and each segment carries a `title` attribute (its date range, and
+"Current" for the active segment) so hovering explains what it means.
+The green-current / distinct-per-past-stint / gray-gap semantics are
+byte-for-byte unchanged — only the rendered markup/CSS changed.
+
+**`person_row.py`** is the new reusable "clickable person row"
+component: avatar/initials circle + name + tenure meter, composed
+inside one bordered card, with trailing columns callers can fill with
+their own extra content (status chip, current-team label, score
+reveal). The name is still a real `st.button` (Streamlit has no other
+way to post a click), but it's restyled — via a `st.container(key=...)`
+scoped selector — from a big centered pill into a left-aligned row
+control that fills the row. This replaced the duplicated, inconsistent
+row markup in `views/manager.py`'s My Team list (the screen the user's
+screenshot flagged) and `views/functional_owner.py`'s Associates list;
+the avatar circle itself (`person_row.avatar_html`) also replaced three
+separate copies of the same inline `<div style="...">` in
+`views/associate_portfolio.py`, `views/manager_associate.py`, and
+`views/agent.py`.
+
+**Future UI work should build on this**: a new screen needing a color,
+spacing value, radius, or shadow should reference `tokens.py` (or the
+matching `--itap-*` CSS variable if it's building raw HTML), and a new
+repeated visual pattern — another list row, another status pill —
+should become a component in its own module (following `person_row.py`
+as the template) rather than being re-typed per view.
+
 **Upsert semantics — a real behavior change, not additive.** Every
 `bulk_import.py` row previously matched-and-reused-unchanged for people
 and skipped a duplicate Assignment outright; it now matches by natural

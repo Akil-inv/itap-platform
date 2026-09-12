@@ -47,6 +47,8 @@ from assignment.rules import TransitionDenied
 
 import streamlit as st
 
+from person_row import avatar_html
+
 ACTIONABLE_ERRORS = (
     ValueError,
     TransitionDenied,
@@ -79,16 +81,10 @@ def render(services, viewer, agent) -> None:
     header_cols = st.columns([1, 5])
     with header_cols[0]:
         profile = services.catalog_service.get_profile(agent.id)
-        if profile and profile.photo_url:
-            st.image(profile.photo_url, width=88)
-        else:
-            st.markdown(
-                '<div style="width:72px;height:72px;border-radius:50%;'
-                'background:#EAF1F8;display:flex;align-items:center;'
-                'justify-content:center;font-size:1.6rem;font-weight:700;'
-                'color:#333F6B;">' + agent.display_name[:1].upper() + "</div>",
-                unsafe_allow_html=True,
-            )
+        st.markdown(
+            avatar_html(agent.display_name, profile.photo_url if profile else None, large=True),
+            unsafe_allow_html=True,
+        )
     with header_cols[1]:
         st.title(agent.display_name)
         st.caption("Associate")
