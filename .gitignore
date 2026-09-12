@@ -6,5 +6,6 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .pytest_cache/
+*.db
 .DS_Store
 workspace/scratch/

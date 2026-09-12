@@ -112,22 +112,33 @@ Last updated: 2026-09-11
   (goal setting, closure, reverse feedback) inherit their Assignment's
   visibility. Includes `consolidated_score` for the Functional Owner's
   per-agent rollup. 11 tests passing.
+- `apps/streamlit_ui/`: working, clickable UI over all three roles.
+  Functional Owner: all-assignments view, onboard Agent/Manager, create
+  Assignment, overdue-goal-setting list, consolidated score per Agent.
+  Manager: per-Agent panel with goal setting, extension request, closure
+  (score + notes), swap-to-new-manager, and reverse feedback received.
+  Agent: their own assignments, goals, score, and a form to give
+  feedback about their Manager. Identity is a dev-mode "view as" picker
+  (see the app's README). Runs against SQLite by default
+  (`DATABASE_URL`), Postgres-ready. Verified with `smoke_test.py`
+  (Streamlit `AppTest`, headless) — renders all three roles and exercises
+  the goal-setting form live end to end.
 
 ### In Progress
 
-- A Streamlit UI thin enough to exercise all three roles end-to-end —
-  next build slice, on top of `party_identity` + `assignment` +
-  `rbac_scope`.
+- Nothing mid-flight; the party_identity + assignment + rbac_scope +
+  Streamlit UI slice is complete and demoable.
 
 ### Next
 
-- Streamlit UI (needs a real Postgres connection — CML platform questions
-  below still open, but local/dev can run against a local Postgres or
-  the existing SQLite-portable adapters in the meantime).
 - Real notification/reminder dispatch (today only a queryable
-  "overdue goal setting" list exists, no delivery mechanism).
+  "overdue goal setting" list exists, no delivery mechanism, no UI
+  button does anything about it yet).
 - Outbox/Event Sync to Iceberg — deferred until the CML platform
   questions below are answered.
+- Deploying `apps/streamlit_ui` to CML as an actual CML Application, and
+  pointing `DATABASE_URL` at a real Postgres instance there — still
+  blocked on the open platform questions below.
 
 ### Known Issues
 

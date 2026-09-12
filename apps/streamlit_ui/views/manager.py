@@ -1,0 +1,113 @@
+from __future__ import annotations
+
+from datetime import date
+
+import streamlit as st
+from assignment.rules import TransitionDenied
+from party_identity.domain import Party
+from rbac_scope import PermissionDenied, Viewer
+
+from party_helpers import party_label, safe_get_name
+
+
+def render(services, viewer: Viewer, current_party: Party) -> None:
+    st.title(f"Manager: {current_party.display_name}")
+
+    assignments = services.scope.list_visible_assignments(viewer)
+    if not assignments:
+        st.write("No Agents currently tasked to you.")
+        return
+
+    for assignment in assignments:
+        agent_name = safe_get_name(services.party_repo, assignment.agent_id)
+        with st.expander(
+            f"{agent_name} — {assignment.state.value} "
+            f"({assignment.start_date} to {assignment.end_date or 'open'})"
+        ):
+            _assignment_panel(services, viewer, assignment)
+
+
+def _assignment_panel(services, viewer: Viewer, assignment) -> None:
+    goal_setting = services.scope.get_goal_setting(viewer, assignment.id)
+    if goal_setting is None:
+        st.warning("No goal setting recorded yet — nothing to assess against at closure.")
+        with st.form(f"goals_{assignment.id}"):
+            goals = st.text_area("Goals (agreed with the agent)")
+            if st.form_submit_button("Record goal setting") and goals:
+                services.assignment_service.record_goal_setting(assignment.id, goals)
+                st.rerun()
+    else:
+        st.write(f"**Goals:** {goal_setting.goals}")
+
+    st.divider()
+
+    if assignment.state.value == "active":
+        st.subheader("Request extension")
+        with st.form(f"extend_{assignment.id}"):
+            new_end = st.date_input("New end date", value=assignment.end_date or date.today())
+            if st.form_submit_button("Request extension"):
+                try:
+                    services.assignment_service.request_extension(
+                        assignment.id, requested_by=viewer.party_id, new_end_date=new_end
+                    )
+                    st.success("Extended.")
+                    st.rerun()
+                except TransitionDenied as e:
+                    st.error(str(e))
+
+        st.subheader("Close assignment")
+        with st.form(f"close_{assignment.id}"):
+            score = st.slider("Objective score", 0.0, 5.0, 3.0, 0.1)
+            notes = st.text_area("Subjective notes")
+            if st.form_submit_button("Close assignment"):
+                try:
+                    services.assignment_service.close_assignment(
+                        assignment.id, objective_score=score, subjective_notes=notes
+                    )
+                    st.success("Closed.")
+                    st.rerun()
+                except TransitionDenied as e:
+                    st.error(str(e))
+
+        st.subheader("Swap to a new manager")
+        other_managers = [
+            p for p in services.party_repo.list_by_type("manager") if p.id != viewer.party_id
+        ]
+        if other_managers:
+            labels = {party_label(p): p for p in other_managers}
+            with st.form(f"swap_{assignment.id}"):
+                new_manager_choice = st.selectbox("New manager", list(labels.keys()))
+                score = st.slider("Closing objective score", 0.0, 5.0, 3.0, 0.1, key=f"swap_score_{assignment.id}")
+                notes = st.text_area("Closing notes", key=f"swap_notes_{assignment.id}")
+                new_start = st.date_input("New assignment start date", value=date.today())
+                if st.form_submit_button("Swap"):
+                    try:
+                        services.assignment_service.swap_to_new_manager(
+                            assignment.id,
+                            new_manager_id=labels[new_manager_choice].id,
+                            objective_score=score,
+                            subjective_notes=notes,
+                            new_start_date=new_start,
+                        )
+                        st.success("Swapped to new manager.")
+                        st.rerun()
+                    except TransitionDenied as e:
+                        st.error(str(e))
+        else:
+            st.caption("No other managers exist to swap to yet.")
+    else:
+        closure = services.scope.get_closure_record(viewer, assignment.id)
+        if closure:
+            st.write(f"**Closure score:** {closure.objective_score} — {closure.subjective_notes}")
+
+    st.divider()
+    st.subheader("Feedback from this Agent about you")
+    try:
+        feedback = services.scope.list_reverse_feedback(viewer, assignment.id)
+    except PermissionDenied:
+        feedback = []
+    if feedback:
+        for f in feedback:
+            st.write(f"- {f.notes} _(recorded {f.recorded_at:%Y-%m-%d})_")
+    else:
+        st.caption("No feedback recorded yet.")

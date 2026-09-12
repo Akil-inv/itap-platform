@@ -157,10 +157,20 @@ runnable against Postgres with an in-process rule adapter).
    limited to what pertains to their own assignments). 11 tests passing.
    Required adding `AssignmentRepo.list_all()` for the Functional Owner's
    blanket-visibility need.
-4. **Notification Dispatch**, **Process Orchestration** (real
-   reminder timers, not just the query) — after RBAC, once there's a UI
-   to trigger from.
-5. **Outbox/Event Sync** — added once the CML platform questions above are
+4. **Streamlit UI** — done, as `apps/streamlit_ui/`. Thin front door over
+   `party_identity` + `assignment` + `rbac_scope`; no business logic of
+   its own. Identity is a dev-mode "view as" picker over existing
+   Parties (role derived from `party_type`) — real auth is still an open
+   platform question and only touches this one seam when answered.
+   Verified end to end with `smoke_test.py` (Streamlit's `AppTest`,
+   headless): seeds demo data, renders all three role views, and
+   exercises the goal-setting form live (manager submits → agent sees it
+   via the RBAC-scoped view).
+5. **Notification Dispatch**, **Process Orchestration** (real
+   reminder timers, not just the query) — next. The UI currently only
+   surfaces the overdue-goal-setting list; there is no delivery
+   mechanism yet.
+6. **Outbox/Event Sync** — added once the CML platform questions above are
    answered.
 
 ### Known MVP decisions to revisit (documented, not blocking)
