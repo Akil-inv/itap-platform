@@ -1,0 +1,12 @@
+# Pins the app to the light theme its custom CSS (theme.py, home.py) was
+# actually designed against. Without this, Streamlit falls back to
+# following the viewer's OS/browser dark-mode preference, and the
+# hand-picked text colors in home.py's pitch panel (meant to sit on a
+# white card) become nearly illegible against a dark background.
+[theme]
+base = "light"
+primaryColor = "#4C78A8"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F7F8FA"
+textColor = "#1B2233"
+font = "sans serif"
