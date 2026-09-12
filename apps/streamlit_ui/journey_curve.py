@@ -124,9 +124,17 @@ class _Curve:
         n = len(self.points)
         if n == 1:
             return self.points[0]
-        full = min(int(progress), n - 2)
-        t = max(0.0, min(1.0, progress - int(progress)))
-        return _bezier_point(self.segments[max(full, 0)], t)
+        # progress == n-1 exactly (the current stage IS the last one — the
+        # common case for a Portfolio's rotation timeline, unlike a
+        # Rotation Plan's partway-through-a-stage progress) has no segment
+        # of its own to interpolate within; return the last point directly
+        # rather than letting the segment-index clamp below land one node
+        # early (segments[n-2] at t=0 is points[n-2], not points[n-1]).
+        if progress >= n - 1:
+            return self.points[-1]
+        full = max(int(progress), 0)
+        t = max(0.0, min(1.0, progress - full))
+        return _bezier_point(self.segments[full], t)
 
 
 def render(

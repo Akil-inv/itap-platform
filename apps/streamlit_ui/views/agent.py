@@ -54,7 +54,6 @@ from party_identity.domain import Party
 from rbac_scope import Viewer
 
 import journey_curve
-import score_curve
 from journey import render_stepper, stage_index
 from party_helpers import safe_get_name
 from person_row import avatar_html
@@ -263,10 +262,18 @@ def _own_score_and_milestones(services, viewer: Viewer, current_party: Party) ->
         st.caption("No scored episodes yet.")
         return
 
-    curve_html = score_curve.render_html(
-        [{"score": m["score"], "label": f"Ep. {i + 1}"} for i, m in enumerate(milestones)]
+    # Same winding "journey curve" as the Rotation Plan preview and the
+    # admin's Rotation Timeline (journey_curve.py) — one road-like visual
+    # language for "a journey" everywhere it appears, not a value-plotted
+    # chart here and a curve elsewhere. progress=n-1 traces the whole path
+    # (every milestone is already in the past); each node's sub-label is
+    # its score.
+    journey_curve.render(
+        [f"Ep. {i + 1}" for i in range(len(milestones))],
+        stage_subs=[f"{m['score']:.1f} / 5.0" for m in milestones],
+        progress=float(len(milestones) - 1),
+        height=220,
     )
-    st.markdown(curve_html, unsafe_allow_html=True)
     for i, m in enumerate(milestones):
         st.write(
             f"- **Episode {i + 1}** — {m['kind']} with {m['manager']}, "

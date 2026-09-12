@@ -197,14 +197,33 @@ def _overlapping(all_assignments, stage_start, stage_end):
 
 def _timeline_section(services, agent, all_assignments) -> None:
     from battery import primary_assignments
+    import journey_curve
 
     primaries = primary_assignments(all_assignments)
     if not primaries:
         st.info("No Primary assignment yet — this Associate hasn't started a rotation.")
         return
 
-    today = date.today()
     st.subheader("Rotation timeline")
+
+    # Overview: the same winding "journey curve" the Rotation Plan preview
+    # uses (journey_curve.py) — one visual language for "a journey" across
+    # the whole app, not a straight stepper here and a curve elsewhere.
+    team_name_by_manager = {
+        t.manager_id: t.name for t in services.catalog_service.list_teams()
+    }
+    stage_names, stage_subs = [], []
+    for p in primaries:
+        manager_name = safe_get_name(services.party_repo, p.manager_id)
+        stage_names.append(team_name_by_manager.get(p.manager_id, manager_name))
+        stage_subs.append(f"{p.start_date} – {p.end_date or 'open'}")
+    active_index = next(
+        (i for i, p in enumerate(primaries) if p.state.value == "active"),
+        len(primaries) - 1,
+    )
+    journey_curve.render(stage_names, stage_subs=stage_subs, progress=float(active_index), height=220)
+
+    today = date.today()
     for i, primary in enumerate(primaries):
         is_active = primary.state.value == "active"
         stage_end = None if is_active else primary.end_date
