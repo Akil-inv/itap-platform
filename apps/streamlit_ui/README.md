@@ -203,6 +203,38 @@ setup. A stage with no default Manager still works exactly as before:
 "Advance" moves the stage, and "Link an active Assignment" connects it
 to whatever gets created by hand.
 
+## Realistic sample dataset (`seed_realistic_dataset.py`)
+
+For trying the app at a real-ish scale instead of the 5-person demo: 4
+ITAP Admins, 15 Line Managers across 5 functions (Engineering, Design,
+Data & Analytics, Product, Operations — 3 managers each, tagged via
+`Party.attributes["function"]`), and 40 Intern/Staff, onboarded through
+`AssignmentService.create_assignment` in 5 batches of 7-9 people sharing
+one start date each, spread across roughly three months. One associate
+(the earliest-onboarded, so there's real elapsed time) is withdrawn
+partway through via `withdraw_assignment`, simulating someone leaving
+mid-rotation.
+
+Everything goes through the real service layer, not raw SQL inserts —
+the same validation, RBAC, and rule-engine paths a real user action
+would hit. Idempotent: matches existing people by exact name and
+existing Agent+Manager pairs by id, so running it again reuses what's
+already there instead of duplicating it.
+
+Runs against whatever `DATABASE_URL` the app itself is configured for
+(defaults to `sqlite:///itap.db`, same file `streamlit run app.py`
+uses):
+
+```bash
+python seed_realistic_dataset.py
+```
+
+Known cosmetic limit at this scale: `org_tree.py`'s Org Structure tab
+lays every Manager and every Agent out in one fixed-width row per tier,
+so 40 Agent cards overlap and truncate their names — the underlying
+data is correct (verify against "All Assignments" or "Overdue"), the
+SVG layout just wasn't built for a cohort this size yet.
+
 ## Smoke test
 
 `smoke_test.py` is not part of the `pytest` suites under `capabilities/`

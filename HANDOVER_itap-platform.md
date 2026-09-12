@@ -323,6 +323,30 @@ Last updated: 2026-09-11
   design applies (journey curve, front page) — not touched here since it
   wasn't part of what was actually agreed to in the mockup review.
 
+- Realistic sample dataset (2026-09-12, same day): new
+  `apps/streamlit_ui/seed_realistic_dataset.py` — 4 ITAP Admins, 15 Line
+  Managers across 5 functions, 40 Intern/Staff onboarded in 5 batches of
+  7-9 sharing one start date each across roughly three months, with one
+  associate withdrawn partway through to simulate a mid-rotation
+  departure. Goes entirely through the real service layer
+  (`AssignmentService.create_assignment`/`withdraw_assignment`, not raw
+  SQL), so it exercises the same validation and RBAC paths a real user
+  action would and shows up correctly everywhere in the UI. Idempotent
+  (matches existing people/pairs, safe to re-run) — verified by running
+  it three times in a row against the same database and confirming no
+  duplicates, plus a full Playwright pass (front page, All Assignments,
+  Org Structure, Overdue) against the seeded data. One real bug caught
+  in the first draft: re-running after the leaver's Assignment was
+  withdrawn created a *second* Assignment for that pair, since
+  `create_assignment`'s own `DuplicateAssignment` check only guards
+  against a duplicate *active* one — fixed by checking for any existing
+  Assignment (active or closed) for that Agent+Manager pair before
+  creating. Known cosmetic gap at this scale: `org_tree.py`'s Org
+  Structure tab lays out every Agent in one fixed-width row, so 40 cards
+  overlap/truncate — the data itself is correct (confirmed via All
+  Assignments/Overdue), just a rendering limit not built for a cohort
+  this size.
+
 ### In Progress
 
 - Nothing mid-flight; the party_identity + assignment + rbac_scope +
