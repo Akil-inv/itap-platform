@@ -142,15 +142,33 @@ def _associates_list(services, viewer: Viewer) -> None:
                 unsafe_allow_html=True,
             )
         with extra_cols[1]:
-            # A bank-balance "reveal, then hide" interaction has no
-            # native Streamlit widget. st.popover is the closest
-            # idiomatic fit: the score renders only inside the
-            # popover's own overlay, collapsed again as soon as the
-            # user clicks elsewhere — nothing sits inline on the row
-            # by default, matching the spec's "never shown inline."
-            with st.popover("👁"):
+            # Bank-balance "reveal, then hide" — exactly one row's score
+            # is ever revealed at a time (a single shared key in session
+            # state, not a per-row flag), so opening a different row's
+            # score closes whichever one was open, per the spec's
+            # "never shown inline" rule: at rest every row shows a
+            # closed-eye icon, never the number.
+            revealed_id = st.session_state.get("revealed_score_agent_id")
+            if revealed_id == str(agent.id):
                 score = services.scope.consolidated_score(viewer, agent.id)
-                st.write(f"{score:.2f}" if score is not None else "No closed episodes yet")
+                score_text = f"{score:.2f}" if score is not None else "—"
+                if st.button(
+                    score_text,
+                    key=f"score_hide_{agent.id}",
+                    icon=":material/visibility:",
+                    width="stretch",
+                ):
+                    st.session_state["revealed_score_agent_id"] = None
+                    st.rerun()
+            else:
+                if st.button(
+                    "",
+                    key=f"score_show_{agent.id}",
+                    icon=":material/visibility_off:",
+                    width="stretch",
+                ):
+                    st.session_state["revealed_score_agent_id"] = str(agent.id)
+                    st.rerun()
         if clicked:
             st.session_state["selected_associate_id"] = str(agent.id)
             st.rerun()

@@ -51,18 +51,27 @@ assert set(status_radios[0].options) == {
     "All", "Active", "Needs attention", "Available", "Completed",
 }
 
-# Hidden score sits behind a popover (AppTest's closest widget to a
-# "click to peek, then it hides again" interaction — see battery.py's
-# module docstring / the report for why this was picked): the score
-# text lives only inside the popover block, not directly on the row.
-popovers = at.get("popover")
-assert popovers, "Expected the hidden-score reveal to be a popover"
-popover_text = "".join(
-    m.value for pop in popovers for m in pop.get("markdown")
-)
-assert "No closed episodes yet" in popover_text or any(
-    ch.isdigit() for ch in popover_text
-), "Expected the popover to contain the aggregate score (or the no-score message)"
+# Hidden score: a single shared reveal toggle, never a popover — every
+# row starts on a "score_show_<agent_id>" (closed-eye) button; clicking
+# one reveals that row's score as a "score_hide_<agent_id>" button and
+# clicking a DIFFERENT row's closed-eye button closes the first one
+# (only one row is ever revealed at once).
+show_buttons = [b for b in at.button if b.key and b.key.startswith("score_show_")]
+assert len(show_buttons) >= 2, f"Expected at least 2 closed-eye buttons, got {len(show_buttons)}"
+
+at = show_buttons[0].click().run()
+hide_buttons = [b for b in at.button if b.key and b.key.startswith("score_hide_")]
+assert len(hide_buttons) == 1, "Expected exactly one row's score revealed after one click"
+assert hide_buttons[0].label == "—" or any(
+    ch.isdigit() for ch in hide_buttons[0].label
+), "Expected the revealed button's label to be the score (or the no-score dash)"
+
+# Revealing a second row's score closes the first — never two at once.
+still_closed = [b for b in at.button if b.key and b.key.startswith("score_show_")]
+assert still_closed, "Expected another row still showing its closed-eye button"
+at = still_closed[0].click().run()
+hide_buttons = [b for b in at.button if b.key and b.key.startswith("score_hide_")]
+assert len(hide_buttons) == 1, "Expected the previous row's score to close when a new one opens"
 
 print("Associates list: OK")
 
