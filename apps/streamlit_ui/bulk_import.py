@@ -134,6 +134,38 @@ _EXAMPLE_ROWS = {
             "4.2",
             "Consistently delivered ahead of schedule; great stakeholder updates.",
         ],
+        # kind=secondary: a real second manager, running concurrently with
+        # Casey's still-open Primary above (same associate, overlapping
+        # dates, a DIFFERENT manager) — this is what the Portfolio's "N
+        # responsibilities" badge counts beyond 1.
+        [
+            "Casey",
+            "Bailey",
+            "secondary",
+            "2026-02-01",
+            "",
+            "Support the design team's onboarding revamp",
+            "Communication; Ownership",
+            "",
+            "",
+            "",
+        ],
+        # kind=cca: manager_name here is the CCA's organizer/scorer, not a
+        # people-manager relationship — see docs/upload_inventory.md's
+        # Assignments section. "Alex" matches the "Hackathon" row on the
+        # CCA Activities sheet below, where Alex is that CCA's organizer.
+        [
+            "Dana",
+            "Alex",
+            "cca",
+            "2025-01-15",
+            "2025-03-01",
+            "Hackathon entry: internal tools track",
+            "",
+            "closed",
+            "4.6",
+            "Won best-in-track; shipped a working demo solo.",
+        ],
     ],
     SHEET_SKILLS: [
         ["Communication", "Clarity and frequency of updates to the manager"],

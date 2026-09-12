@@ -30,7 +30,7 @@ assert parsed.associates[0]["interested_ccas"] == ["Hackathon"]
 assert len(parsed.managers) == 2, parsed.managers
 assert parsed.managers[0]["function"] == "Engineering", parsed.managers
 assert parsed.managers[0]["team_name"] == "Platform Team", parsed.managers
-assert len(parsed.assignments) == 2, parsed.assignments
+assert len(parsed.assignments) == 4, parsed.assignments
 assert parsed.assignments[0]["associate_name"] == "Casey"
 assert parsed.assignments[0]["manager_name"] == "Alex"
 assert parsed.assignments[0]["kind"] == AssignmentKind.PRIMARY
@@ -38,6 +38,26 @@ assert parsed.assignments[0]["start_date"] == date(2026, 1, 1)
 assert parsed.assignments[0]["criteria"] == ["Communication", "Technical Skill", "Ownership"]
 assert parsed.assignments[1]["status"] == "closed"
 assert parsed.assignments[1]["objective_score"] == 4.2
+
+# kind=secondary example row: Casey, concurrent with her Primary above,
+# under a different manager (Bailey).
+secondary_row = parsed.assignments[2]
+assert secondary_row["associate_name"] == "Casey"
+assert secondary_row["manager_name"] == "Bailey"
+assert secondary_row["kind"] == AssignmentKind.SECONDARY
+assert secondary_row["start_date"] == date(2026, 2, 1)
+assert secondary_row["end_date"] is None
+
+# kind=cca example row: Dana, with "manager_name" naming the CCA's
+# organizer/scorer (Alex, who organizes "Hackathon" on the CCA
+# Activities sheet) rather than a people-manager relationship.
+cca_row = parsed.assignments[3]
+assert cca_row["associate_name"] == "Dana"
+assert cca_row["manager_name"] == "Alex"
+assert cca_row["kind"] == AssignmentKind.CCA
+assert cca_row["status"] == "closed"
+assert cca_row["objective_score"] == 4.6
+
 assert len(parsed.skills) == 3
 assert len(parsed.cca_activities) == 2
 assert parsed.cca_activities[0]["status"].value == "open"
@@ -69,7 +89,7 @@ services = get_services()
 result = bulk_import.apply_import(services, parsed)
 counts = result.counts()
 assert not any(r.status == "error" for r in result.row_results), result.row_results
-assert counts.get("created", 0) >= 5, counts  # 1 admin + 2 associates + 2 managers + 2 assignments at minimum
+assert counts.get("created", 0) >= 7, counts  # 1 admin + 2 associates + 2 managers + 4 assignments at minimum
 
 admins = {p.display_name for p in services.party_repo.list_by_type("functional_owner")}
 agents = {p.display_name for p in services.party_repo.list_by_type("agent")}
@@ -90,20 +110,42 @@ ccas = {c.name for c in services.catalog_service.list_cca_activities()}
 assert ccas == {"Hackathon", "Brownbag Series"}, ccas
 
 assignments = services.assignment_repo.list_all()
-assert len(assignments) == 2
-open_assignment = next(a for a in assignments if a.agent_id == next(p for p in services.party_repo.list_by_type("agent") if p.display_name == "Casey").id)
+assert len(assignments) == 4, assignments  # Casey primary+secondary, Dana primary+cca
+casey_id = next(p for p in services.party_repo.list_by_type("agent") if p.display_name == "Casey").id
+open_assignment = next(a for a in assignments if a.agent_id == casey_id and a.kind == AssignmentKind.PRIMARY)
 goal_setting = services.assignment_repo.get_goal_setting(open_assignment.id)
 assert goal_setting is not None
 assert goal_setting.criteria == ["Communication", "Technical Skill", "Ownership"]
 
+# kind=secondary: Casey's second, concurrent assignment under Bailey.
+secondary_assignment = next(a for a in assignments if a.agent_id == casey_id and a.kind == AssignmentKind.SECONDARY)
+assert secondary_assignment.state.value == "active"
+secondary_manager = next(p for p in services.party_repo.list_by_type("manager") if p.id == secondary_assignment.manager_id)
+assert secondary_manager.display_name == "Bailey"
+assert len([a for a in assignments if a.agent_id == casey_id]) == 2, (
+    "Casey should now have 2 responsibilities: Primary + Secondary"
+)
+
 dana = next(p for p in services.party_repo.list_by_type("agent") if p.display_name == "Dana")
-dana_assignment = next(a for a in assignments if a.agent_id == dana.id)
+dana_assignment = next(a for a in assignments if a.agent_id == dana.id and a.kind == AssignmentKind.PRIMARY)
 assert dana_assignment.state.value == "closed", "Historical row with status=closed must be created already-closed"
 closure = services.assignment_repo.get_closure_record(dana_assignment.id)
 assert closure is not None
 assert closure.objective_score == 4.2
 assert "ahead of schedule" in closure.subjective_notes
-print("apply_import creates agents/managers/teams/skills/ccas/assignments incl. historical closed+scored one: OK")
+
+# kind=cca: Dana's CCA episode, organized/scored by Alex, closed & scored.
+dana_cca_assignment = next(a for a in assignments if a.agent_id == dana.id and a.kind == AssignmentKind.CCA)
+assert dana_cca_assignment.state.value == "closed"
+cca_organizer = next(p for p in services.party_repo.list_by_type("manager") if p.id == dana_cca_assignment.manager_id)
+assert cca_organizer.display_name == "Alex"
+cca_closure = services.assignment_repo.get_closure_record(dana_cca_assignment.id)
+assert cca_closure is not None
+assert cca_closure.objective_score == 4.6
+assert len([a for a in assignments if a.agent_id == dana.id]) == 2, (
+    "Dana should now have 2 responsibilities: Primary + CCA"
+)
+print("apply_import creates agents/managers/teams/skills/ccas/assignments incl. secondary+cca kinds: OK")
 
 # --- associate profile / self-declared skills / interest flags from the template row ---
 
@@ -135,7 +177,7 @@ assert counts2.get("created", 0) == 0, counts2
 agents_after = services.party_repo.list_by_type("agent")
 assert len(agents_after) == 2, "Re-import must not create duplicate Associates"
 assignments_after = services.assignment_repo.list_all()
-assert len(assignments_after) == 2, "Re-import must not create duplicate Assignments"
+assert len(assignments_after) == 4, "Re-import must not create duplicate Assignments"
 print("Re-import creates nothing new (idempotent): OK")
 
 # --- Phase 5: re-uploading with ONE changed field is a real UPDATE, not a skip ---
@@ -149,7 +191,7 @@ for a in changed.associates:
     if a["name"] == "Casey":
         a["bio"] = "Now leads the onboarding squad."
 for row in changed.assignments:
-    if row["associate_name"] == "Casey":
+    if row["associate_name"] == "Casey" and row["kind"] == AssignmentKind.PRIMARY:
         row["end_date"] = date(2026, 12, 31)
 
 result3 = bulk_import.apply_import(services, changed)
@@ -162,13 +204,15 @@ assert alex_after.attributes.get("function") == "Platform Engineering"
 casey_profile_after = services.catalog_service.get_profile(casey.id)
 assert casey_profile_after.bio == "Now leads the onboarding squad."
 casey_assignment_after = next(
-    a for a in services.assignment_repo.list_all() if a.agent_id == casey.id and a.state.value == "active"
+    a
+    for a in services.assignment_repo.list_all()
+    if a.agent_id == casey.id and a.kind == AssignmentKind.PRIMARY and a.state.value == "active"
 )
 assert casey_assignment_after.end_date == date(2026, 12, 31)
 
 # Still exactly the same number of people/assignments — an update, never a duplicate.
 assert len(services.party_repo.list_by_type("manager")) == 2
-assert len(services.assignment_repo.list_all()) == 2
+assert len(services.assignment_repo.list_all()) == 4
 print("Re-upload with a changed field UPDATES the matched record, never duplicates: OK")
 
 # --- Phase 5: photos.zip matches by email or photo_filename ---

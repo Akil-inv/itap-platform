@@ -147,10 +147,12 @@ def build_demo_workbook() -> bytes:
     ws = wb.create_sheet(SHEET_CCA_ACTIVITIES)
     ws.append(CCA_ACTIVITY_COLUMNS)
     _bold_header(ws)
+    cca_organizers: dict[str, str] = {}  # cca name -> organizer manager name, reused below
     for i, (cca_name, status) in enumerate(_CCA_ACTIVITIES):
         organizer = _MANAGER_NAMES[i % len(_MANAGER_NAMES)]
         organizer_email = organizer.lower().replace(" ", ".") + "@example.com"
         ws.append([cca_name, organizer, organizer_email, status])
+        cca_organizers[cca_name] = organizer
     _autosize(ws)
 
     # -- Associates + Assignments (built together so the history is coherent) --
@@ -230,6 +232,51 @@ def build_demo_workbook() -> bytes:
                 "", "", "",
             ]
         )
+
+        # A handful of associates also carry a Secondary or CCA episode
+        # on top of their Primary history, so the Portfolio's "N
+        # responsibilities" badge (and its Secondary/CCA overlap detail)
+        # is actually exercised by this demo dataset — see the QA note
+        # around commit b8038d8: the previous version of this generator
+        # only ever produced `kind=primary` rows.
+        if i == 0:
+            # Concurrent Secondary, under a manager who is NOT this
+            # associate's current (or any past) Primary manager, running
+            # alongside their still-open current Primary stint above.
+            available = [m for m in _MANAGER_NAMES if m not in managers_used]
+            secondary_manager = available[0] if available else _MANAGER_NAMES[0]
+            secondary_start = cursor + timedelta(days=30)
+            assign_ws.append(
+                [
+                    name, secondary_manager, "secondary",
+                    secondary_start.isoformat(), "",
+                    f"Support {secondary_manager.split()[0]}'s team on a cross-functional initiative",
+                    "Communication; Ownership",
+                    "", "", "",
+                ]
+            )
+        elif i in (1, 2):
+            # A closed, scored CCA episode. "manager_name" here is the
+            # CCA's organizer/scorer (see docs/upload_inventory.md's
+            # Assignments section), reusing one of the CCA Activities
+            # already declared above rather than inventing a new one.
+            # Picked to not collide with this associate's currently
+            # active Primary manager.
+            cca_name, cca_organizer = next(
+                (n, o) for n, o in cca_organizers.items() if o != current_manager
+            )
+            cca_start = TODAY - timedelta(days=200)
+            cca_end = TODAY - timedelta(days=150)
+            cca_score = round(random.uniform(3.5, 5.0), 1)
+            assign_ws.append(
+                [
+                    name, cca_organizer, "cca",
+                    cca_start.isoformat(), cca_end.isoformat(),
+                    f"{cca_name} participation",
+                    "",
+                    "closed", cca_score, random.choice(_SUBJECTIVE_NOTES),
+                ]
+            )
 
     _autosize(assoc_ws)
     _autosize(assign_ws)
