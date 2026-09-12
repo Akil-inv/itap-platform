@@ -28,7 +28,7 @@ Each subdirectory here is one domain-agnostic capability block from
 | 6 | `rbac_scope/` | Built — `ScopedAssignmentQueries`: 3-way visibility (Functional Owner / Manager / Agent) computed from relationship to the record, not per-role queries. 13 tests passing. Depends on `assignment` at runtime (see its README for install). |
 | 7 | notification dispatch | Not started |
 | 8 | outbox sync | Not started |
-| — | `rotation_plan/` | Built — `RotationPlanService`: a fixed, named path of stages (e.g. "Platform Team" -> "Data Team" -> "Product Team") an Agent is enrolled into, with a computed fractional position along it (`progress_value`) for the "you are here" journey-curve UI. Deliberately independent of `assignment` — a stage is a track/label, not a specific Manager; which Assignment actually covers a given stage isn't modeled yet, see "Known MVP decisions to revisit" in `docs/architecture.md`. 49 tests passing across in-memory + SQL adapters. |
+| — | `rotation_plan/` | Built — `RotationPlanService`: a fixed, named path of stages (e.g. "Platform Team" -> "Data Team" -> "Product Team") an Agent is enrolled into, with a computed fractional position along it (`progress_value`) for the "you are here" journey-curve UI. `Enrollment.stage_assignments` links a stage index to the `assignment.Assignment` id covering it, by id only — this package still never imports `assignment`, per the no-concrete-cross-capability-dependency convention. 71 tests passing across in-memory + SQL adapters. |
 
 **Note on genericity:** per project decision (2026-09-12), we're prioritizing
 a working ITAP platform over premature generalization. `assignment/` is

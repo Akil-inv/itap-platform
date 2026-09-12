@@ -244,6 +244,24 @@ Last updated: 2026-09-11
   yet linked to `assignment`: a plan stage is a label, not a specific
   Manager/Assignment — an admin reading both screens is what connects
   them today.
+- Stage-to-Assignment linking (2026-09-12, same day): closed that gap.
+  `Enrollment.stage_assignments: dict[int, UUID]` maps a stage index to
+  the `assignment.Assignment` id covering it (by id only — `rotation_plan`
+  still never imports `assignment`); `enroll()`/`advance_stage()` can link
+  in the same call, or an admin links after the fact via
+  `RotationPlanService.link_assignment()`. Functional Owner's per-person
+  row is now an expander showing who covers the current stage, with a
+  selector over that Agent's active Assignments to link one. The Agent's
+  own journey curve shows the linked Manager's name under each reached
+  stage. `rotation_plan` now at 71 tests. A real layout bug turned up
+  during manual (Playwright) verification, not the unit suite: the "you
+  are here" marker sitting exactly on a stage node (true at progress 0
+  and right after every `advance_stage`) collided with that node's own
+  labels once a manager sub-label was actually present — fixed in
+  `journey_curve.py` by widening the sub-label offset past the marker's
+  halo and flipping "You are here" to the opposite side from the node's
+  own labels. See "Linking a stage to its Assignment" in
+  `docs/architecture.md`.
 
 ### In Progress
 

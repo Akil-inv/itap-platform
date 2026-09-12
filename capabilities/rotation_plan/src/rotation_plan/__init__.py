@@ -6,6 +6,7 @@ from .domain import (
     NoNextStage,
     RotationPlan,
     RotationPlanNotFound,
+    StageIndexOutOfRange,
 )
 from .service import RotationPlanService
 
@@ -17,5 +18,6 @@ __all__ = [
     "EnrollmentNotFound",
     "AlreadyEnrolled",
     "NoNextStage",
+    "StageIndexOutOfRange",
     "ConcurrentModification",
 ]

@@ -18,8 +18,10 @@ from sqlalchemy import (
     MetaData,
     String,
     Table,
+    inspect,
     insert,
     select,
+    text,
     update,
 )
 
@@ -52,12 +54,36 @@ rotation_enrollments_table = Table(
     Column("current_stage_index", Integer, nullable=False),
     Column("enrolled_at", DateTime(timezone=True), nullable=False),
     Column("stage_started_at", DateTime(timezone=True), nullable=False),
+    Column("stage_assignments", JSON, nullable=False),
     Column("version", Integer, nullable=False),
 )
 
 
+def _ensure_columns(engine: Engine, table: Table, backfill: Optional[dict] = None) -> None:
+    """Additive-only schema patch for a table that already existed on disk
+    before a column was added here — `metadata.create_all()` only creates
+    missing *tables*, never missing *columns*. Same convention as
+    capabilities/assignment/adapters/sql.py, which hit this for real once
+    a local dev database predated a new column."""
+    inspector = inspect(engine)
+    if table.name not in inspector.get_table_names():
+        return
+    existing = {col["name"] for col in inspector.get_columns(table.name)}
+    missing = [column for column in table.columns if column.name not in existing]
+    if not missing:
+        return
+    backfill = backfill or {}
+    with engine.begin() as conn:
+        for column in missing:
+            col_type = column.type.compile(dialect=engine.dialect)
+            conn.execute(text(f"ALTER TABLE {table.name} ADD COLUMN {column.name} {col_type}"))
+            if column.name in backfill:
+                conn.execute(update(table).values(**{column.name: backfill[column.name]}))
+
+
 def create_schema(engine: Engine) -> None:
     metadata.create_all(engine, tables=[rotation_plans_table, rotation_enrollments_table])
+    _ensure_columns(engine, rotation_enrollments_table, backfill={"stage_assignments": {}})
 
 
 class SqlRotationPlanRepo:
@@ -165,6 +191,13 @@ def _enrollment_values(
         "current_stage_index": enrollment.current_stage_index,
         "enrolled_at": enrollment.enrolled_at,
         "stage_started_at": enrollment.stage_started_at,
+        # JSON object keys must be strings, and UUID isn't JSON-serializable
+        # on its own — encode both sides as str, decoded back in
+        # _row_to_enrollment.
+        "stage_assignments": {
+            str(stage_index): str(assignment_id)
+            for stage_index, assignment_id in enrollment.stage_assignments.items()
+        },
         "version": enrollment.version + 1 if bump_version else enrollment.version,
     }
     if include_id:
@@ -190,5 +223,9 @@ def _row_to_enrollment(row) -> Enrollment:
         current_stage_index=row["current_stage_index"],
         enrolled_at=row["enrolled_at"],
         stage_started_at=row["stage_started_at"],
+        stage_assignments={
+            int(stage_index): UUID(assignment_id)
+            for stage_index, assignment_id in (row["stage_assignments"] or {}).items()
+        },
         version=row["version"],
     )

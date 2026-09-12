@@ -3,7 +3,12 @@ from uuid import uuid4
 
 import pytest
 
-from rotation_plan.domain import AlreadyEnrolled, NoNextStage, RotationPlanNotFound
+from rotation_plan.domain import (
+    AlreadyEnrolled,
+    NoNextStage,
+    RotationPlanNotFound,
+    StageIndexOutOfRange,
+)
 from rotation_plan.service import RotationPlanService
 
 
@@ -121,3 +126,71 @@ def test_progress_value_reflects_current_stage_index(service):
     value = service.progress_value(advanced, plan, as_of=advanced.stage_started_at)
 
     assert value == 1.0
+
+
+def test_enroll_can_link_the_starting_assignment(service):
+    plan = service.create_plan("Engineering Foundations Track", ["Platform", "Data"])
+    assignment_id = uuid4()
+
+    enrollment = service.enroll(plan.id, uuid4(), assignment_id=assignment_id)
+
+    assert enrollment.stage_assignments == {0: assignment_id}
+    assert enrollment.current_assignment_id == assignment_id
+
+
+def test_enroll_without_assignment_id_leaves_it_unlinked(service):
+    plan = service.create_plan("Engineering Foundations Track", ["Platform", "Data"])
+    enrollment = service.enroll(plan.id, uuid4())
+    assert enrollment.current_assignment_id is None
+
+
+def test_advance_stage_can_link_the_new_assignment(service):
+    plan = service.create_plan("Engineering Foundations Track", ["Platform", "Data"])
+    enrollment = service.enroll(plan.id, uuid4())
+    new_assignment_id = uuid4()
+
+    advanced = service.advance_stage(enrollment.id, assignment_id=new_assignment_id)
+
+    assert advanced.current_assignment_id == new_assignment_id
+    assert advanced.stage_assignments == {1: new_assignment_id}
+
+
+def test_advance_stage_preserves_earlier_stage_links(service):
+    plan = service.create_plan("Engineering Foundations Track", ["Platform", "Data", "Product"])
+    first_assignment = uuid4()
+    enrollment = service.enroll(plan.id, uuid4(), assignment_id=first_assignment)
+
+    advanced = service.advance_stage(enrollment.id)
+
+    assert advanced.stage_assignments == {0: first_assignment}
+    assert advanced.current_assignment_id is None
+
+
+def test_link_assignment_sets_the_given_stage(service):
+    plan = service.create_plan("Engineering Foundations Track", ["Platform", "Data", "Product"])
+    enrollment = service.enroll(plan.id, uuid4())
+    assignment_id = uuid4()
+
+    updated = service.link_assignment(enrollment.id, 0, assignment_id)
+
+    assert updated.stage_assignments == {0: assignment_id}
+
+
+def test_link_assignment_can_target_a_non_current_stage(service):
+    plan = service.create_plan("Engineering Foundations Track", ["Platform", "Data", "Product"])
+    enrollment = service.enroll(plan.id, uuid4())
+    past_assignment = uuid4()
+
+    # Backfilling a link for an already-completed stage after the fact.
+    updated = service.link_assignment(enrollment.id, 0, past_assignment)
+
+    assert updated.stage_assignments[0] == past_assignment
+    assert updated.current_stage_index == 0  # linking doesn't move the stage
+
+
+def test_link_assignment_rejects_out_of_range_stage(service):
+    plan = service.create_plan("Engineering Foundations Track", ["Platform", "Data"])
+    enrollment = service.enroll(plan.id, uuid4())
+
+    with pytest.raises(StageIndexOutOfRange):
+        service.link_assignment(enrollment.id, 5, uuid4())

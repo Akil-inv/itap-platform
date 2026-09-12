@@ -185,8 +185,12 @@ Python port of the curve from the approved front-page mockup.
 
 A stage is a label/track, not a specific Manager — the Manager for a
 given stage still comes from a normal Assignment created separately.
-Nothing here auto-matches an Assignment to a plan stage; an admin reading
-both screens is what connects them today.
+`Enrollment.stage_assignments` records which Assignment covers which
+stage (by id only), filled in by an admin from each enrollment row's
+"Link an active Assignment to this stage" control — nothing auto-matches
+one to the other, and closing an Assignment doesn't advance a stage (or
+vice versa). Once linked, the Agent's own journey curve shows the
+covering Manager's name under each reached stage.
 
 ## Smoke test
 

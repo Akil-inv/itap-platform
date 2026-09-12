@@ -38,6 +38,22 @@ def _rotation_plan_progress(services, current_party: Party) -> None:
     for enrollment in enrollments:
         plan = services.rotation_plan_repo.get_plan(enrollment.plan_id)
         value = services.rotation_plan_service.progress_value(enrollment, plan)
+
+        # A stage's sub-label is the Manager whose Assignment was linked to
+        # it (see Functional Owner's "Rotation Plans" tab) — blank for a
+        # stage that hasn't been linked to one yet.
+        stage_subs: list[str | None] = []
+        for stage_index_i in range(plan.stage_count):
+            assignment_id = enrollment.stage_assignments.get(stage_index_i)
+            if assignment_id is None:
+                stage_subs.append(None)
+                continue
+            try:
+                linked_assignment = services.assignment_repo.get(assignment_id)
+                stage_subs.append(safe_get_name(services.party_repo, linked_assignment.manager_id))
+            except Exception:
+                stage_subs.append(None)
+
         with st.container(border=True):
             stage_name = plan.stage_names[enrollment.current_stage_index]
             st.markdown(f"**Your rotation plan — {plan.name}**")
@@ -45,7 +61,9 @@ def _rotation_plan_progress(services, current_party: Party) -> None:
                 f"Stage {enrollment.current_stage_index + 1} of {plan.stage_count} — "
                 f"{stage_name}"
             )
-            journey_curve.render(plan.stage_names, progress=value, height=260)
+            journey_curve.render(
+                plan.stage_names, stage_subs=stage_subs, progress=value, height=260
+            )
     st.write("")
 
 

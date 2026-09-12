@@ -13,6 +13,10 @@ from ..domain import (
 )
 
 
+def _copy_enrollment(e: Enrollment) -> Enrollment:
+    return replace(e, stage_assignments=dict(e.stage_assignments))
+
+
 class InMemoryRotationPlanRepo:
     def __init__(self) -> None:
         self._plans: dict[UUID, RotationPlan] = {}
@@ -36,11 +40,11 @@ class InMemoryRotationPlanRepo:
     def add_enrollment(self, enrollment: Enrollment) -> None:
         if enrollment.id in self._enrollments:
             raise ValueError(f"Enrollment {enrollment.id} already exists")
-        self._enrollments[enrollment.id] = replace(enrollment)
+        self._enrollments[enrollment.id] = _copy_enrollment(enrollment)
 
     def get_enrollment(self, enrollment_id: UUID) -> Enrollment:
         try:
-            return replace(self._enrollments[enrollment_id])
+            return _copy_enrollment(self._enrollments[enrollment_id])
         except KeyError:
             raise EnrollmentNotFound(enrollment_id) from None
 
@@ -49,14 +53,14 @@ class InMemoryRotationPlanRepo:
     ) -> Optional[Enrollment]:
         for e in self._enrollments.values():
             if e.agent_id == agent_id and e.plan_id == plan_id:
-                return replace(e)
+                return _copy_enrollment(e)
         return None
 
     def list_enrollments_for_plan(self, plan_id: UUID) -> list[Enrollment]:
-        return [replace(e) for e in self._enrollments.values() if e.plan_id == plan_id]
+        return [_copy_enrollment(e) for e in self._enrollments.values() if e.plan_id == plan_id]
 
     def list_enrollments_for_agent(self, agent_id: UUID) -> list[Enrollment]:
-        return [replace(e) for e in self._enrollments.values() if e.agent_id == agent_id]
+        return [_copy_enrollment(e) for e in self._enrollments.values() if e.agent_id == agent_id]
 
     def update_enrollment(self, enrollment: Enrollment) -> None:
         current = self._enrollments.get(enrollment.id)
@@ -64,4 +68,6 @@ class InMemoryRotationPlanRepo:
             raise EnrollmentNotFound(enrollment.id)
         if current.version != enrollment.version:
             raise ConcurrentModification(enrollment.id)
-        self._enrollments[enrollment.id] = replace(enrollment, version=enrollment.version + 1)
+        self._enrollments[enrollment.id] = _copy_enrollment(
+            replace(enrollment, version=enrollment.version + 1)
+        )

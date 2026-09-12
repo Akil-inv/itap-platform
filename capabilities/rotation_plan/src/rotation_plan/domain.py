@@ -1,11 +1,13 @@
 """A rotation plan is a fixed, named path of stages (e.g. "Platform Team"
 -> "Data Team" -> "Product Team") that an Agent is enrolled into, so their
-next placement isn't a one-off decision each time. Deliberately decoupled
-from `assignment.Assignment`: a plan stage is a label/track, not a
-specific Manager — the actual Manager for a given stage is whatever
-Assignment is open for that Agent at the time, tracked independently.
-Linking a specific Assignment to a specific stage is a known gap, not
-solved here — see docs/architecture.md.
+next placement isn't a one-off decision each time. A stage is a
+label/track, not a specific Manager — `Enrollment.stage_assignments` maps
+a stage index to the `assignment.Assignment` id that actually covers it,
+by id only: this package never imports `assignment` (no dependency on
+another capability's concrete types, per docs/architecture.md's
+capability conventions) — the caller (the Streamlit app layer, which
+already talks to both capabilities) is what resolves an id to a Manager
+name or dates.
 """
 from __future__ import annotations
 
@@ -45,7 +47,12 @@ class Enrollment:
     current_stage_index: int = 0
     enrolled_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     stage_started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    stage_assignments: dict[int, UUID] = field(default_factory=dict)
     version: int = 0
+
+    @property
+    def current_assignment_id(self) -> "UUID | None":
+        return self.stage_assignments.get(self.current_stage_index)
 
 
 class RotationPlanNotFound(Exception):
@@ -61,6 +68,10 @@ class AlreadyEnrolled(Exception):
 
 
 class NoNextStage(Exception):
+    pass
+
+
+class StageIndexOutOfRange(Exception):
     pass
 
 

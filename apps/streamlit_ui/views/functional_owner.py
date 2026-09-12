@@ -344,21 +344,70 @@ def _rotation_plans(services) -> None:
                 journey_curve.render(plan.stage_names, markers=markers, height=260)
 
                 for enrollment, agent_name, stage_name, is_last in rows:
-                    col1, col2, col3 = st.columns([2, 2, 1])
-                    with col1:
-                        st.write(f"**{agent_name}**")
-                    with col2:
-                        st.caption(
-                            f"Stage {enrollment.current_stage_index + 1} of "
-                            f"{plan.stage_count} — {stage_name}"
-                        )
-                    with col3:
+                    linked_id = enrollment.current_assignment_id
+                    linked_caption = "No Assignment linked to this stage yet."
+                    if linked_id is not None:
+                        try:
+                            linked_assignment = services.assignment_repo.get(linked_id)
+                            manager_name = safe_get_name(
+                                services.party_repo, linked_assignment.manager_id
+                            )
+                            linked_caption = (
+                                f"Covered by **{manager_name}** "
+                                f"({linked_assignment.start_date} to "
+                                f"{linked_assignment.end_date or 'open'})"
+                            )
+                        except Exception:
+                            linked_caption = "The linked Assignment no longer exists."
+
+                    header = (
+                        f"{agent_name} — Stage {enrollment.current_stage_index + 1} of "
+                        f"{plan.stage_count} ({stage_name})"
+                    )
+                    with st.expander(header):
+                        st.caption(linked_caption)
+
+                        active_assignments = [
+                            a
+                            for a in services.assignment_repo.list_by_agent(enrollment.agent_id)
+                            if a.state.value == "active"
+                        ]
+                        if active_assignments:
+                            assignment_labels = {
+                                f"{safe_get_name(services.party_repo, a.manager_id)} "
+                                f"(since {a.start_date})": a
+                                for a in active_assignments
+                            }
+                            col_a, col_b = st.columns([3, 1])
+                            with col_a:
+                                assignment_choice = st.selectbox(
+                                    "Link an active Assignment to this stage",
+                                    list(assignment_labels.keys()),
+                                    key=f"link_choice_{enrollment.id}",
+                                )
+                            with col_b:
+                                st.write("")
+                                st.write("")
+                                if st.button("Link", key=f"link_btn_{enrollment.id}"):
+                                    services.rotation_plan_service.link_assignment(
+                                        enrollment.id,
+                                        enrollment.current_stage_index,
+                                        assignment_labels[assignment_choice].id,
+                                    )
+                                    st.rerun()
+                        else:
+                            st.caption(
+                                "No active Assignment for this Intern to link yet — "
+                                "create one in Onboard & Assign."
+                            )
+
+                        st.divider()
                         if not is_last:
-                            if st.button("Advance", key=f"advance_{enrollment.id}"):
+                            if st.button("Advance to next stage", key=f"advance_{enrollment.id}"):
                                 services.rotation_plan_service.advance_stage(enrollment.id)
                                 st.rerun()
                         else:
-                            st.caption("Final stage")
+                            st.caption("Final stage — nothing to advance to.")
             else:
                 st.caption("No one enrolled yet.")
 

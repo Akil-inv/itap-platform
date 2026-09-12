@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
-from .domain import AlreadyEnrolled, Enrollment, NoNextStage, RotationPlan
+from .domain import AlreadyEnrolled, Enrollment, NoNextStage, RotationPlan, StageIndexOutOfRange
 from .ports import RotationPlanRepo
 
 
@@ -32,31 +32,65 @@ class RotationPlanService:
         return plan
 
     def enroll(
-        self, plan_id: UUID, agent_id: UUID, as_of: Optional[datetime] = None
+        self,
+        plan_id: UUID,
+        agent_id: UUID,
+        as_of: Optional[datetime] = None,
+        assignment_id: Optional[UUID] = None,
     ) -> Enrollment:
         self._repo.get_plan(plan_id)  # raises RotationPlanNotFound if missing
         if self._repo.get_enrollment_for_agent(agent_id, plan_id) is not None:
             raise AlreadyEnrolled(agent_id, plan_id)
         now = as_of or datetime.now(timezone.utc)
+        stage_assignments = {0: assignment_id} if assignment_id is not None else {}
         enrollment = Enrollment(
-            plan_id=plan_id, agent_id=agent_id, enrolled_at=now, stage_started_at=now
+            plan_id=plan_id,
+            agent_id=agent_id,
+            enrolled_at=now,
+            stage_started_at=now,
+            stage_assignments=stage_assignments,
         )
         self._repo.add_enrollment(enrollment)
         return enrollment
 
     def advance_stage(
-        self, enrollment_id: UUID, as_of: Optional[datetime] = None
+        self,
+        enrollment_id: UUID,
+        as_of: Optional[datetime] = None,
+        assignment_id: Optional[UUID] = None,
     ) -> Enrollment:
         enrollment = self._repo.get_enrollment(enrollment_id)
         plan = self._repo.get_plan(enrollment.plan_id)
         if enrollment.current_stage_index >= plan.stage_count - 1:
             raise NoNextStage(enrollment_id)
         now = as_of or datetime.now(timezone.utc)
+        new_index = enrollment.current_stage_index + 1
+        stage_assignments = dict(enrollment.stage_assignments)
+        if assignment_id is not None:
+            stage_assignments[new_index] = assignment_id
         updated = replace(
             enrollment,
-            current_stage_index=enrollment.current_stage_index + 1,
+            current_stage_index=new_index,
             stage_started_at=now,
+            stage_assignments=stage_assignments,
         )
+        self._repo.update_enrollment(updated)
+        return self._repo.get_enrollment(enrollment_id)
+
+    def link_assignment(
+        self, enrollment_id: UUID, stage_index: int, assignment_id: UUID
+    ) -> Enrollment:
+        """Record which Assignment actually covers a given stage — by id
+        only, since this package never imports `assignment`. Can target
+        any valid stage, not just the current one, so a link made after
+        the fact (or ahead of time) is just as easy as linking as you go."""
+        enrollment = self._repo.get_enrollment(enrollment_id)
+        plan = self._repo.get_plan(enrollment.plan_id)
+        if not (0 <= stage_index < plan.stage_count):
+            raise StageIndexOutOfRange(stage_index)
+        stage_assignments = dict(enrollment.stage_assignments)
+        stage_assignments[stage_index] = assignment_id
+        updated = replace(enrollment, stage_assignments=stage_assignments)
         self._repo.update_enrollment(updated)
         return self._repo.get_enrollment(enrollment_id)
 

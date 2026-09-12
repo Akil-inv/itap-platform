@@ -121,3 +121,41 @@ def test_update_missing_enrollment_raises(rotation_plan_repo):
     phantom = Enrollment(plan_id=plan.id, agent_id=uuid4())
     with pytest.raises(EnrollmentNotFound):
         rotation_plan_repo.update_enrollment(phantom)
+
+
+def test_stage_assignments_round_trips(rotation_plan_repo):
+    plan = _make_plan()
+    rotation_plan_repo.add_plan(plan)
+    assignment_id = uuid4()
+    enrollment = Enrollment(
+        plan_id=plan.id, agent_id=uuid4(), stage_assignments={0: assignment_id}
+    )
+    rotation_plan_repo.add_enrollment(enrollment)
+
+    fetched = rotation_plan_repo.get_enrollment(enrollment.id)
+    assert fetched.stage_assignments == {0: assignment_id}
+    assert fetched.current_assignment_id == assignment_id
+
+
+def test_stage_assignments_default_to_empty(rotation_plan_repo):
+    plan = _make_plan()
+    rotation_plan_repo.add_plan(plan)
+    enrollment = Enrollment(plan_id=plan.id, agent_id=uuid4())
+    rotation_plan_repo.add_enrollment(enrollment)
+
+    assert rotation_plan_repo.get_enrollment(enrollment.id).stage_assignments == {}
+
+
+def test_update_enrollment_persists_stage_assignments(rotation_plan_repo):
+    plan = _make_plan()
+    rotation_plan_repo.add_plan(plan)
+    enrollment = Enrollment(plan_id=plan.id, agent_id=uuid4())
+    rotation_plan_repo.add_enrollment(enrollment)
+
+    assignment_id = uuid4()
+    enrollment.stage_assignments = {0: assignment_id}
+    rotation_plan_repo.update_enrollment(enrollment)
+
+    assert rotation_plan_repo.get_enrollment(enrollment.id).stage_assignments == {
+        0: assignment_id
+    }

@@ -164,8 +164,14 @@ def render(
             "plain": "#4C78A8",
         }[status]
         stroke = "#D8DCE3" if status == "upcoming" else fill
+        # sub_y clears the "you are here" marker's halo (radius 13,
+        # centered on this same point when progress lands exactly on a
+        # node) — the original -6 offset used to render the stage's
+        # manager name on top of that halo. label_y stays close to the
+        # viewBox's own top/bottom edge, so it can't move out any further
+        # without the label itself getting clipped.
         label_y = p.y - 20 if i % 2 == 0 else p.y + 34
-        sub_y = p.y - 6 if i % 2 == 0 else p.y + 49
+        sub_y = p.y - 34 if i % 2 == 0 else p.y + 49
         svg.append(
             f'<circle cx="{p.x:.1f}" cy="{p.y:.1f}" r="8" fill="{fill}" '
             f'stroke="{stroke}" stroke-width="2"/>'
@@ -187,8 +193,15 @@ def render(
             f'<circle cx="{me.x:.1f}" cy="{me.y:.1f}" r="6.5" fill="#16707F" '
             f'stroke="#FFFFFF" stroke-width="2.5"/>'
         )
+        # The marker can land right on top of a stage node (progress==0, or
+        # a stage with no target duration) — place "You are here" on the
+        # opposite side from that node's own label/sub-label, not always
+        # above, or the two collide illegibly.
+        nearest_stage = min(int(round(progress)), len(stage_names) - 1)
+        label_above = nearest_stage % 2 == 0
+        you_are_here_y = me.y + 20 if label_above else me.y - 20
         svg.append(
-            f'<text x="{me.x:.1f}" y="{me.y - 16:.1f}" text-anchor="middle" '
+            f'<text x="{me.x:.1f}" y="{you_are_here_y:.1f}" text-anchor="middle" '
             f'font-size="11" font-weight="700" fill="#16707F">You are here</text>'
         )
 

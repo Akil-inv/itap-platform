@@ -224,13 +224,12 @@ runnable against Postgres with an in-process rule adapter).
 - `ITAP_DEV_MODE=false` hides the identity-switching UI but is a safety
   valve, not a security boundary — the underlying service calls have no
   auth of their own yet. Real auth remains the actual fix.
-- `rotation_plan`'s stages are labels, not a link to a specific
-  Assignment/Manager — an enrolled Agent's actual current Manager still
-  comes from a separately-created Assignment, matched up only by the
-  admin/manager reading both screens. No automatic "closing this
-  Assignment advances the plan" behavior exists yet; advancing a stage is
-  a manual admin action (`RotationPlanService.advance_stage`). Revisit
-  once a second real use case makes the link worth modeling.
+- Stages are still not *auto*-linked: `Enrollment.stage_assignments` (see
+  "Linking a stage to its Assignment" below) is a record an admin fills
+  in by hand, one link at a time. Closing an Assignment doesn't advance
+  a plan, and advancing a plan doesn't create or close an Assignment —
+  both remain manual admin actions. Worth automating once the manual
+  step becomes a real point of friction, not before.
 
 ### Rotation Plan (2026-09-12, same day)
 
@@ -275,6 +274,50 @@ semicolon-separated stages + weeks/stage), enroll an Agent, see the
 cohort plotted on the plan's curve, and manually advance a person's
 stage. Agent's "My Journey" shows their own plan curve (if enrolled)
 above the existing per-Assignment cards, which are unchanged.
+
+### Linking a stage to its Assignment (2026-09-12, same day)
+
+Closed the gap the Rotation Plan section above documented: a stage was a
+bare label with no record of which Assignment/Manager actually covered
+it. `Enrollment` gained `stage_assignments: dict[int, UUID]` — stage
+index -> `assignment.Assignment` id, by id only (this package still never
+imports `assignment`; the Streamlit app layer, which already talks to
+both capabilities, is what resolves an id to a Manager name). New
+`RotationPlanService.link_assignment(enrollment_id, stage_index,
+assignment_id)`; `enroll()` and `advance_stage()` both grew an optional
+`assignment_id` param to link in the same call instead of a second one.
+`Enrollment.current_assignment_id` is a convenience property for "the
+assignment covering *today's* stage." 71 tests passing (up from 49).
+
+The SQL adapter needed the same additive-column self-heal
+(`_ensure_columns`, backfilling `stage_assignments` to `{}`) as
+`assignment` did for `criteria`/`version` — this table is only one commit
+old, but the convention held anyway rather than assuming "we just built
+this, it can't be stale yet." Storage detail: JSON object keys must be
+strings and `UUID` isn't JSON-serializable, so the adapter encodes both
+the stage index and the assignment id as strings and decodes them back
+to `int`/`UUID` on the way out — the domain layer never sees a string key.
+
+UI: the Functional Owner's per-enrollment row is now an expander showing
+who currently covers that stage (or that no one does yet), a selector of
+the Agent's own active Assignments to link, and the existing "Advance"
+action below it. The Agent's journey curve passes the resolved Manager
+names as `stage_subs`, so their own page shows who covered each reached
+stage without a manager having to be looked up separately.
+
+Manual verification (not just the unit suite) caught a real layout bug
+this surfaced: when the "you are here" marker lands exactly on a stage
+node — true at progress 0, and true again immediately after any
+`advance_stage` call — its "You are here" caption used to sit on the
+same side as that node's own name label, and a stage's new manager
+sub-label (`stage_subs`) sat close enough to overlap the marker's halo
+outright. Fixed in `journey_curve.py`: the sub-label offset moved from 6
+px off the node (inside the halo's 13 px radius) to 34 px, and "You are
+here" now renders on the side opposite that node's own labels instead of
+always above. Caught by a Playwright screenshot of the Agent's own page
+after linking an assignment, not by any unit test — the math was correct
+in every automated test; the labels only visibly collided once real text
+occupied both slots.
 
 ### Bulk Setup + a real Streamlit ordering bug (2026-09-12, same day)
 
