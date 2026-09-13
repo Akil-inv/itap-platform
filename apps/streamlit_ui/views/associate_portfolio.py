@@ -228,7 +228,7 @@ def _timeline_section(services, agent, all_assignments) -> None:
         (i for i, p in enumerate(primaries) if p.state.value == "active"),
         len(primaries) - 1,
     )
-    journey_curve.render(stage_names, stage_subs=stage_subs, progress=float(active_index), height=220)
+    journey_curve.render(stage_names, stage_subs=stage_subs, progress=float(active_index), height=260)
 
     today = date.today()
     for i, primary in enumerate(primaries):

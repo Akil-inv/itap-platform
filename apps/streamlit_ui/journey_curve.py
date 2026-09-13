@@ -30,6 +30,10 @@ _SUBLABEL_COLOR = TOKENS.neutral[500]
 
 _WIDTH, _HEIGHT = 860, 210
 _MARGIN_X, _MARGIN_Y = 70, 34
+# Headroom above/below the curve's own y-range (_MARGIN_Y to
+# _HEIGHT - _MARGIN_Y) for a stacked label + sub-label at the topmost or
+# bottommost point — see render()'s viewBox comment.
+_TOP_PAD, _BOTTOM_PAD = 40, 40
 
 
 def _esc(s: str) -> str:
@@ -153,9 +157,34 @@ def render(
     curve = _Curve(len(stage_names))
     stage_subs = stage_subs or [None] * len(stage_names)
 
-    svg = [f'<svg viewBox="0 0 {_WIDTH} {_HEIGHT + 40}" xmlns="http://www.w3.org/2000/svg" ']
+    # `_TOP_PAD`/`_BOTTOM_PAD` give the viewBox real headroom above and
+    # below the curve's own y-range (`_MARGIN_Y` to `_HEIGHT - _MARGIN_Y`)
+    # for a stacked label + sub-label. The old viewBox only padded the
+    # bottom (`_HEIGHT + 40`, for an odd-indexed point near the bottom
+    # whose labels draw *below* it) and had no matching pad above y=0 —
+    # so the topmost point, when it landed on an even index (labels draw
+    # *above* it), could place its sub-label's baseline at y<10, close
+    # enough to 0 that the glyphs' ascenders crossed y=0 and got clipped
+    # by the SVG viewport itself. This is independent of the surrounding
+    # iframe/CSS sizing — an SVG always clips to its own viewBox — so no
+    # amount of iframe height would have fixed it on its own.
+    #
+    # Taller padding also means the viewBox's own aspect ratio no longer
+    # matches what each call site's `height=` was tuned for, so
+    # `height:100%` (with `html,body{height:100%}` so the percentage
+    # resolves against something) fits the whole viewBox inside whatever
+    # pixel box the iframe actually has, via the SVG's default
+    # `preserveAspectRatio="xMidYMid meet"` — letterboxing if the two
+    # aspect ratios don't match exactly, but never cropping regardless of
+    # what `height` a caller passes.
+    view_height = _HEIGHT + _TOP_PAD + _BOTTOM_PAD
+    svg = [
+        "<style>html,body{margin:0;height:100%;}</style>",
+        f'<svg viewBox="0 {-_TOP_PAD} {_WIDTH} {view_height}" xmlns="http://www.w3.org/2000/svg" ',
+    ]
     svg.append(
-        'style="width:100%; height:auto; font-family:-apple-system,Segoe UI,Helvetica,sans-serif;">'
+        'style="display:block; width:100%; height:100%; '
+        'font-family:-apple-system,Segoe UI,Helvetica,sans-serif;">'
     )
 
     if progress is not None:
