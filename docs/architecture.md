@@ -223,12 +223,25 @@ runnable against Postgres with an in-process rule adapter).
    render each Assignment's existing state as a visible 3-stage stepper
    (Goal Setting → Active → Closed) instead of a flat form dump.
    `org_tree.py` renders the whole current org (Functional Owner(s) →
-   Managers → Agents) as a hand-built inline SVG — rounded cards, smooth
-   bezier connectors, hover-to-trace highlighting — with zero external/
-   CDN dependency. Verified end to end with `smoke_test.py` (Streamlit's
-   `AppTest`, headless) and with real Playwright screenshots (AppTest
-   doesn't render CSS/JS, so a visual claim needs a real browser to back
-   it).
+   Managers → Agents) as a hand-built inline SVG — avatar circles (photo
+   when the party has one uploaded, else colored initials, same
+   `_photo_src` base64-data-URI technique as `person_row.py` reused
+   inside the isolated `st.iframe` document), right-angle "elbow" tree
+   connectors, hover-to-trace highlighting — with zero external/CDN
+   dependency. Rewritten from an earlier flat per-tier layout that spaced
+   every node evenly across a fixed width with no regard for its actual
+   parent, which forced every edge to cross the whole diagram to reach
+   its real target (a real usability complaint once the demo dataset had
+   enough managers/associates to make it visible). The current layout
+   groups each manager's associates into their own cluster, centers the
+   manager above it, and collapses the Owner → Manager tier — a complete
+   bipartite graph in this data model, since every Functional Owner
+   oversees every Manager — into a single shared trunk line instead of
+   N x M crossing diagonals, so the whole thing reads as one literal
+   tree rather than a tangle. Verified end to end with `smoke_test.py`
+   (Streamlit's `AppTest`, headless) and with real Playwright screenshots
+   against the full demo dataset (AppTest doesn't render CSS/JS, so a
+   visual/layout claim needs a real browser to back it).
 5. **Notification Dispatch**, **Process Orchestration** (real
    reminder timers, not just the query) — next. The UI currently only
    surfaces the overdue-goal-setting list; there is no delivery

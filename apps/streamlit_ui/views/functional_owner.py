@@ -222,7 +222,16 @@ def _org_structure(services, viewer: Viewer) -> None:
         (f"m_{a.manager_id.hex}", f"a_{a.agent_id.hex}") for a in active
     ]
 
-    org_tree.render(owners, managers, agents, edges_owner_manager, edges_manager_agent)
+    photo_urls = {}
+    for p in owners_parties + manager_parties + agent_parties:
+        profile = services.catalog_service.get_profile(p.id)
+        if profile and profile.photo_url:
+            prefix = "o_" if p in owners_parties else ("m_" if p in manager_parties else "a_")
+            photo_urls[f"{prefix}{p.id.hex}"] = profile.photo_url
+
+    org_tree.render(
+        owners, managers, agents, edges_owner_manager, edges_manager_agent, photo_urls=photo_urls
+    )
     st.caption(
         "Showing current structure only (active assignments). "
         "Hover a card to trace its connections."
