@@ -4,6 +4,20 @@ The front door over `capabilities/party_identity`, `capabilities/assignment`,
 and `capabilities/rbac_scope`. Contains no business logic itself — every
 action goes through `AssignmentService` or `ScopedAssignmentQueries`.
 
+## Database: SQLite by default, self-managed Postgres if you need it
+
+`services.py`'s `get_services()` reads `DATABASE_URL` (default
+`sqlite:///itap.db`) — every SQL adapter is plain SQLAlchemy Core with
+no Postgres-only features, so either database works with zero code
+changes. SQLite serializes writes (one writer at a time); if multiple
+Managers/Admins writing concurrently makes that a real bottleneck, and
+your CML workspace won't provision a managed database, set
+`EMBED_POSTGRES=true` (plus `PG_PASSWORD`) to have `pg_embedded.py`
+launch a real, self-contained Postgres as a background subprocess of
+this same app — see `apps/postgres_service/README.md` for the full
+setup, the standalone-second-app alternative, backups, and the
+downtime runbook.
+
 ## User Manual (`user_manual.py`)
 
 A "📖 User Manual" button sits in `app.py`'s persistent header, next to

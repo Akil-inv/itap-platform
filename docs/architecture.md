@@ -119,12 +119,34 @@ ITAP itself is intended to be almost entirely configuration on top of the
 
 ### Open platform questions (need confirmation from CML admin/platform team)
 
-1. Package/runtime rights: can Postgres be installed user-space (conda-forge)
-   at session start, or does a custom CML Runtime image need to be built and
-   registered?
+1. ~~Package/runtime rights: can Postgres be installed user-space
+   (conda-forge) at session start, or does a custom CML Runtime image need
+   to be built and registered?~~
+   **Sidestepped (2026-09-13):** confirmed the platform team won't
+   provision a managed database, so this no longer needs an answer —
+   `apps/postgres_service/` runs a self-contained Postgres (own data
+   directory, own start/backup/restore/healthcheck scripts) as a
+   subprocess of the Streamlit app's own CML Application, needing only a
+   place to run a process and a place to persist files, both of which a
+   CML Application already has. Verified end-to-end this session: real
+   (non-SQLite) Postgres schema creation, the demo fixture, the full
+   AppTest suite, a 30-concurrent-writer stress test (multiple
+   "managers" creating assignments and recording goal-setting
+   simultaneously — the actual scenario motivating this — zero errors,
+   zero lost writes), and a full backup → restore round-trip with
+   matching row counts. What's still unconfirmed either way: whether
+   Postgres binaries built on this sandbox's Ubuntu 24.04 (glibc 2.39)
+   will run at all on your CML runtime's actual OS (likely RHEL/CDP-family
+   with an older glibc) — see that README's "Getting real Postgres
+   binaries onto your CML box" for the fallback path (ask the platform
+   team to install `postgresql-server` directly, which sidesteps this
+   entirely).
 2. Internal networking: can one CML Application reach another CML
    Application (or a CML Job) over a raw TCP port within the workspace, or
-   only via the external HTTP ingress?
+   only via the external HTTP ingress? Still open — only matters now if
+   you want Postgres running as its *own* CML Application (`apps/
+   postgres_service/README.md`'s "standalone" mode) rather than the
+   embedded subprocess mode above, which doesn't depend on the answer.
 3. Whether Impala/Iceberg is required as the live system of record, or
    whether landing data there for governance/reporting (via the outbox
    sync) is sufficient. Current design assumes the latter.
@@ -167,9 +189,11 @@ ITAP itself is intended to be almost entirely configuration on top of the
    no real AD here, but exercises the real Party-matching, error paths,
    and the DEV_MODE force-off through the actual app).
 
-These block Phase 2+ (Iceberg sync, Flowable/Drools adapters) but do not
-block Phase 1 (Party/Identity + Assignment Engine + Rule Engine, all
-runnable against Postgres with an in-process rule adapter).
+Questions 2 and 3 block Phase 2+ (Iceberg sync, Flowable/Drools adapters)
+but do not block Phase 1 (Party/Identity + Assignment Engine + Rule Engine,
+all runnable against Postgres with an in-process rule adapter) — and as of
+question 1's resolution above, Phase 1 no longer needs a CML-provisioned
+database to do it with.
 
 ## Build order
 
