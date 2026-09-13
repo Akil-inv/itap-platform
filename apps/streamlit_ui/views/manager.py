@@ -116,7 +116,7 @@ def _render_rows(services, agent_ids: list, empty_message: str) -> None:
     )
     for agent in agents:
         all_assignments = services.assignment_repo.list_by_agent(agent.id)
-        battery_html = render_battery_html(all_assignments)
+        battery_html = render_battery_html(all_assignments, party_repo=services.party_repo)
         profile = services.catalog_service.get_profile(agent.id)
         # Deliberately no score column here — see this module's
         # docstring: managers never see the aggregate score, not even

@@ -194,13 +194,19 @@ def build_demo_workbook() -> bytes:
             ]
         )
 
-        # A full calendar year of rotation history: 2-3 closed, scored
-        # 3-4 month Primary stints working backward from ~10-11 months
-        # ago, then one still-open current stint — so the battery bar
-        # shows several stacked segments, not just the current one.
+        # 2-3 closed, scored 3-4 month Primary stints working backward
+        # from a randomized total tenure length, then one still-open
+        # current stint — so the battery bar shows several stacked
+        # segments, not just the current one. The total length varies
+        # per associate (~7-21 months) rather than a fixed 365 days for
+        # everyone: a fixed total made every associate's battery bar
+        # show the exact same segment count, which read as a rendering
+        # bug rather than the real, varied tenures it's supposed to
+        # represent.
         n_past_stints = random.choice([2, 3])
-        stint_length_days = 365 // (n_past_stints + 1)
-        cursor = TODAY - timedelta(days=365)
+        total_tenure_days = random.randint(200, 640)
+        stint_length_days = total_tenure_days // (n_past_stints + 1)
+        cursor = TODAY - timedelta(days=total_tenure_days)
         managers_used = random.sample(_MANAGER_NAMES, k=n_past_stints + 1)
 
         for stint_i in range(n_past_stints):

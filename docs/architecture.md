@@ -1055,10 +1055,26 @@ directly instead of duplicating hex values.
 **`battery.py`'s tenure meter** got a real track: segments now sit
 inside a subtle recessed capsule (`.itap-battery`) instead of floating
 loose next to a name, are bigger (18×14px vs. the old 9×18px slivers),
-and each segment carries a `title` attribute (its date range, and
-"Current" for the active segment) so hovering explains what it means.
-The green-current / distinct-per-past-stint / gray-gap semantics are
-byte-for-byte unchanged — only the rendered markup/CSS changed.
+and each segment carries a `title` attribute so hovering explains what
+it means. The green-current / gray-gap semantics are unchanged.
+
+Two things about it changed later, both reported against real usage
+rather than the demo dataset: (1) every past-stint segment originally
+picked its color by arrival order within that one Associate's own bar
+("1st past stint, 2nd past stint, ..."), so the same color meant a
+different manager on every row — indistinguishable from random without
+a legend. Colors are now derived deterministically from the manager's
+party id (`_manager_color`, a hash into the 6-color palette), so a given
+manager's color is the same everywhere it appears. (2) the tooltip
+originally showed only raw ISO dates; it now leads with the manager
+name and adds a running "month N-M of tenure" count computed cumulatively
+across segments, so hovering answers "how far into their tenure was
+this" without doing date arithmetic by hand. Relatedly, the demo
+generator (`generate_demo_workbook.py`) used a fixed 365-day tenure
+window for every associate, which made every battery bar show the same
+segment count — read as a rendering bug rather than the varied real
+tenures it's meant to represent; it now randomizes each associate's
+total tenure length (~200-640 days).
 
 **`person_row.py`** is the new reusable "clickable person row"
 component: avatar/initials circle + name + tenure meter, composed
