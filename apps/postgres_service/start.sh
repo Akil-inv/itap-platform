@@ -20,18 +20,36 @@
 #
 # Optional:
 #   PG_BIN_DIR    - directory containing initdb/postgres/psql, if not
-#                   already on PATH (e.g. a bundle built by
-#                   build_postgres_bundle.sh on this same machine).
+#                   already on PATH. Defaults to ./pg_bundle/bin next
+#                   to this script if that directory exists (the
+#                   bundle build_postgres_bundle.sh produces) — see
+#                   this directory's README for how that bundle is
+#                   built and why it needs no matching system glibc.
 #
 # Usage: PG_DATA_DIR=/path/to/pgdata PG_PASSWORD=... bash start.sh
 set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 PG_DATA_DIR="${PG_DATA_DIR:?Set PG_DATA_DIR to a persistent path}"
 PG_PORT="${PG_PORT:-5432}"
 PG_DB="${PG_DB:-itap}"
 PG_USER="${PG_USER:-itap}"
 PG_PASSWORD="${PG_PASSWORD:?Set PG_PASSWORD}"
+
+if [ -z "${PG_BIN_DIR:-}" ] && [ -d "$HERE/pg_bundle/bin" ]; then
+  PG_BIN_DIR="$HERE/pg_bundle/bin"
+fi
 BIN="${PG_BIN_DIR:+$PG_BIN_DIR/}"
+
+# The bundle's binaries ship with a placeholder ELF interpreter path
+# (see pg_bundle/patch_interpreter.py) that has to be rewritten to
+# wherever this bundle actually landed before any of them will run.
+# Idempotent — a no-op once already patched — so this is safe on every
+# start, not just the first.
+if [ -n "${PG_BIN_DIR:-}" ] && [ -f "$HERE/patch_interpreter.py" ]; then
+  python3 "$HERE/patch_interpreter.py"
+fi
 
 if [ ! -f "$PG_DATA_DIR/PG_VERSION" ]; then
   echo "No existing data directory at $PG_DATA_DIR — initializing..."
@@ -52,8 +70,16 @@ if [ ! -f "$PG_DATA_DIR/PG_VERSION" ]; then
   # localhost-only connection, but it costs nothing and means the
   # exact same data directory is safe to promote to its own CML
   # Application later without reconfiguring auth.
-  echo "listen_addresses = '*'" >> "$PG_DATA_DIR/postgresql.conf"
-  echo "port = $PG_PORT" >> "$PG_DATA_DIR/postgresql.conf"
+  {
+    echo "listen_addresses = '*'"
+    echo "port = $PG_PORT"
+    # Default unix_socket_directories (/var/run/postgresql) is
+    # typically root-owned and not writable by whatever unprivileged
+    # user a CML Application actually runs as — point it at the data
+    # directory itself instead, which this same user just created and
+    # definitely can write to.
+    echo "unix_socket_directories = '$PG_DATA_DIR'"
+  } >> "$PG_DATA_DIR/postgresql.conf"
   cat > "$PG_DATA_DIR/pg_hba.conf" <<-EOF
 	local   all             all                                     scram-sha-256
 	host    all             all             0.0.0.0/0               scram-sha-256

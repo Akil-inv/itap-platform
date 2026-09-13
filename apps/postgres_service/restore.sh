@@ -18,10 +18,15 @@
 #   PGPASSWORD       - required
 set -euo pipefail
 
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 PG_PORT="${PG_PORT:-5432}"
 PG_USER="${PG_USER:-itap}"
 PG_BACKUP_FILE="${PG_BACKUP_FILE:?Set PG_BACKUP_FILE to the .dump file to restore}"
 PG_RESTORE_DB="${PG_RESTORE_DB:-itap_restore}"
+if [ -z "${PG_BIN_DIR:-}" ] && [ -d "$HERE/pg_bundle/bin" ]; then
+  PG_BIN_DIR="$HERE/pg_bundle/bin"
+fi
 BIN="${PG_BIN_DIR:+$PG_BIN_DIR/}"
 : "${PGPASSWORD:?Set PGPASSWORD}"
 

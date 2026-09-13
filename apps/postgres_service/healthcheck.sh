@@ -9,9 +9,14 @@
 # Env vars: same PG_DATA_DIR / PG_PORT / PG_USER as start.sh.
 set -uo pipefail
 
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 PG_DATA_DIR="${PG_DATA_DIR:?Set PG_DATA_DIR}"
 PG_PORT="${PG_PORT:-5432}"
 PG_USER="${PG_USER:-itap}"
+if [ -z "${PG_BIN_DIR:-}" ] && [ -d "$HERE/pg_bundle/bin" ]; then
+  PG_BIN_DIR="$HERE/pg_bundle/bin"
+fi
 BIN="${PG_BIN_DIR:+$PG_BIN_DIR/}"
 DISK_WARN_PERCENT="${DISK_WARN_PERCENT:-85}"
 
