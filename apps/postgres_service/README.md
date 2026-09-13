@@ -43,37 +43,68 @@ There are two shapes this can take:
 
 Either way, the scripts here don't care where they're invoked from.
 
-## Getting real Postgres binaries onto your CML box
+## The bundled Postgres binaries (`pg_bundle/`)
 
-Nothing here bundles a Postgres binary — a binary built in this
-sandbox (Ubuntu 24.04, glibc 2.39) is very likely to fail to run at
-all on a RHEL/CDP-family CML runtime with an older glibc (the same
-class of problem the Python offline wheelhouse hit with manylinux
-tags — see `apps/streamlit_ui/offline_deploy/README.md` — except
-there's no equivalent "build for any target from one machine" trick
-for a compiled C program; it has to run on something that actually
-matches). In order of preference:
+Unlike the Python offline wheelhouse (which hits a real, unavoidable
+"built for the wrong OS/glibc" risk — see
+`apps/streamlit_ui/offline_deploy/README.md`), the binaries in
+`pg_bundle/` are built to sidestep that problem entirely rather than
+just warn about it:
 
-1. Check whether `postgres`/`initdb`/`pg_ctl` are already present on
-   the CML box (`which postgres` in a CML terminal, or check whatever
-   your base image ships) — some enterprise Linux images already
-   carry the client tools or even a server package.
-2. If your CML terminal has a package manager with any repo access
-   (`yum`/`dnf`/`apt`), install `postgresql-server` (or your distro's
-   equivalent) directly there — this is the simplest ask to make of
-   your platform team ("install this one package") and sidesteps
-   every binary-compatibility question.
-3. As a last resort, build Postgres from source on a machine that
-   actually matches your CML runtime's OS/glibc (check with `cat
-   /etc/os-release` and `ldd --version` in a CML terminal first), and
-   transfer the resulting `bin/`+`lib/` install prefix in — same
-   "build/download elsewhere, upload the result" pattern as the Python
-   wheelhouse.
+- **Linked against musl, not glibc**, with musl's own tiny runtime
+  (`pg_bundle/lib/ld-musl-x86_64.so.1`) shipped alongside — these
+  binaries depend on nothing from the target machine but the Linux
+  kernel's syscall interface, which is stable across any remotely
+  modern distro. No glibc version to match, RHEL/CDP or otherwise.
+- **Not fully static** — Postgres's own extension loading
+  (`dict_snowball`, `plpgsql`, both required just for `initdb`'s
+  default bootstrap) needs `dlopen()` at runtime, which a truly static
+  binary can't do. These are dynamically linked, just against the
+  bundled musl instead of the target's glibc.
+- **Relocatable to any path.** The one thing that can't be made
+  relative is the ELF interpreter (the kernel requires it to be a real
+  absolute path — no `$ORIGIN`, no `PATH` search, unlike RPATH). Every
+  binary is linked with a long, obviously-fake placeholder interpreter
+  path (~215 bytes reserved) instead of a real one;
+  `patch_interpreter.py` rewrites it in place, at first use, to
+  wherever `pg_bundle/` actually landed. `start.sh` runs this
+  automatically (idempotent — safe to run on every start, not just the
+  first) whenever it finds `pg_bundle/bin` next to itself; the other
+  scripts (`backup.sh`, `restore.sh`, `healthcheck.sh`) also default
+  `PG_BIN_DIR` to `pg_bundle/bin` if present, but don't re-patch —
+  run/restart via `start.sh` at least once first.
 
-Whichever of the three gets you working binaries, point `PG_BIN_DIR`
-at their directory (or just make sure they're on `PATH`) — every
-script here resolves `initdb`/`postgres`/`pg_dump`/etc. through
-`PG_BIN_DIR` first, PATH otherwise.
+Verified this session, with the sandbox's own musl runtime hidden
+(simulating a target machine that doesn't have musl installed) and the
+bundle copied to an arbitrary, previously-unseen path: `initdb`,
+`pg_ctl start` (which internally re-execs `postgres` itself — the
+scenario most likely to break under naive relocation), the full ITAP
+app test suite, a 30-concurrent-writer stress test, and a full
+backup → restore round trip. All passed unchanged.
+
+**What's still genuinely unverified**: this was all built and tested
+on Ubuntu 24.04 x86_64. The musl approach removes the *glibc*-matching
+risk, but if your CML runtime is a different CPU architecture (arm64)
+or has kernel-level restrictions this sandbox doesn't (seccomp/syscall
+filtering in some hardened containers occasionally blocks syscalls
+older/portable binaries rely on), that's not something this could
+verify without access to the real environment. Test `pg_bundle/bin/
+postgres --version` there before relying on it for anything real.
+
+To rebuild (a newer Postgres version, or if this approach needs
+revisiting): `build_postgres_bundle.sh` on an Ubuntu/Debian machine
+with `apt` and `musl-tools` reproduces the whole thing — see its own
+comments for exactly what it does and why. `pg_bundle/` itself is
+gitignored on source branches (same convention as
+`offline_deploy/wheelhouse/`) and committed on the offline-deps branch
+(or your equivalent binary-artifacts branch).
+
+If you'd rather not rely on a musl build at all: check whether
+`postgres`/`initdb`/`pg_ctl` are already present on the CML box, or
+whether your platform team can install `postgresql-server` (or your
+distro's equivalent) directly — either sidesteps this section
+entirely. Point `PG_BIN_DIR` at wherever those binaries live instead
+of `pg_bundle/bin`.
 
 ## Env vars (all scripts)
 
@@ -84,7 +115,7 @@ script here resolves `initdb`/`postgres`/`pg_dump`/etc. through
 | `PG_USER` | no | `itap` | |
 | `PG_PASSWORD` | yes (start.sh) | — | Set once, at first init — changing it later needs `ALTER ROLE`, not just re-exporting the var. |
 | `PG_DB` | no | `itap` | |
-| `PG_BIN_DIR` | no | (use `PATH`) | See above. |
+| `PG_BIN_DIR` | no | `pg_bundle/bin` if present, else `PATH` | Point elsewhere if not using the bundled binaries. |
 | `PGPASSWORD` | yes (backup.sh, restore.sh) | — | Read directly by `pg_dump`/`pg_restore`/`createdb`. |
 | `PG_BACKUP_DIR` | yes (backup.sh) | — | Ideally a different physical volume than `PG_DATA_DIR`. |
 | `PG_BACKUP_RETENTION_DAYS` | no | `14` | |

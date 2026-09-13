@@ -16,11 +16,16 @@
 #   PG_BACKUP_RETENTION_DAYS   - default 14.
 set -euo pipefail
 
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 PG_PORT="${PG_PORT:-5432}"
 PG_USER="${PG_USER:-itap}"
 PG_DB="${PG_DB:-itap}"
 PG_BACKUP_DIR="${PG_BACKUP_DIR:?Set PG_BACKUP_DIR}"
 RETENTION_DAYS="${PG_BACKUP_RETENTION_DAYS:-14}"
+if [ -z "${PG_BIN_DIR:-}" ] && [ -d "$HERE/pg_bundle/bin" ]; then
+  PG_BIN_DIR="$HERE/pg_bundle/bin"
+fi
 BIN="${PG_BIN_DIR:+$PG_BIN_DIR/}"
 : "${PGPASSWORD:?Set PGPASSWORD}"
 
