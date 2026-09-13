@@ -15,17 +15,30 @@ short **screen tour** (what each tab is, for orientation) followed by
 real task done) — a reference alone doesn't tell anyone how to run the
 process end to end, which is the actual point of a manual. The same
 `MANUAL_BY_ROLE` structure is also read directly by
-`offline_deploy`-adjacent tooling that renders a downloadable PDF per
-role (see the repo's scratch `build_pdfs.py` used to spot-check this),
-so a step written here shows up identically in both places — there's
-exactly one place to keep this content accurate as the UI changes.
+`generate_manual_pdfs.py`, a dev-only script that renders an
+illustrated, downloadable PDF per role (real screenshots of the running
+app paired with each workflow), so a step written here shows up
+identically in both places — there's exactly one place to keep this
+content accurate as the UI changes.
+
+The PDFs themselves are pre-built and checked in under
+`assets/manuals/<role value>.pdf` rather than generated at request
+time: building one needs reportlab/Pillow/Playwright, none of which
+belong in this app's runtime requirements.txt (this deployment has to
+install everything from an air-gapped wheelhouse — see
+offline_deploy/ — and those are sizeable, dev-only tools). Re-run
+`generate_manual_pdfs.py` locally and commit the result whenever this
+file's content changes.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import streamlit as st
 from rbac_scope import Role
+
+_MANUALS_DIR = Path(__file__).parent / "assets" / "manuals"
 
 
 @dataclass
@@ -305,6 +318,15 @@ def render(role: Role) -> None:
     called under (a popover, in app.py's header)."""
     manual = MANUAL_BY_ROLE[role]
     st.markdown(manual.intro)
+
+    pdf_path = _MANUALS_DIR / f"{role.value}.pdf"
+    if pdf_path.exists():
+        st.download_button(
+            "Download as PDF",
+            data=pdf_path.read_bytes(),
+            file_name=f"ITAP_User_Manual_{role.value}.pdf",
+            mime="application/pdf",
+        )
 
     st.markdown(f"#### {manual.tour.heading}")
     for bullet in manual.tour.bullets:
