@@ -6,6 +6,9 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .pytest_cache/
+build/
 *.db
 .DS_Store
 workspace/scratch/
+apps/streamlit_ui/offline_deploy/wheelhouse/
+apps/streamlit_ui/offline_deploy/requirements.txt
