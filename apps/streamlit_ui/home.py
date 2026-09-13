@@ -1,12 +1,29 @@
 """The product's landing/sign-in screen — one page, styled per the
 approved front-page mockup: a pitch panel ("one address, three
 experiences") next to the actual sign-in card. This is still the one
-place identity selection happens (not a sidebar dropdown), and still the
-same dev-mode stand-in underneath (no real auth yet — see
-docs/architecture.md): picking your name from the grouped list below is
-what "signing in" means today. Real auth only replaces that one picker;
-everything downstream (services, views, RBAC) already only needs a
-Viewer, however it gets constructed.
+place identity selection happens (not a sidebar dropdown).
+
+Three ways this card can render, checked in this order — see
+`render()`:
+
+1. **No one onboarded yet** — the one-time "Add the first ITAP Admin"
+   bootstrap form, regardless of anything below. Nobody to authenticate
+   against yet, AD or otherwise.
+2. **AD login configured** (`ad_auth.is_configured()`) — a real
+   username + password form, authenticated by an LDAP bind against your
+   corporate Active Directory (`ad_auth.py`). This is the one that
+   belongs in an actual deployment.
+3. **Neither** — the dev-mode picker: click any name from the grouped
+   list below, no credentials at all. A stand-in for real auth, not a
+   security boundary — see `ad_auth.py`/`sso_auth.py` and
+   docs/architecture.md.
+
+Real auth only ever replaces this one card; everything downstream
+(services, views, RBAC) already only needs a Viewer, however it gets
+constructed. CML SSO passthrough (`sso_auth.py`, checked in `app.py`
+before this module is ever reached) is the other real-auth path — AD
+login here is for when that isn't available yet, or the app runs
+somewhere outside CML's own proxy entirely.
 """
 from __future__ import annotations
 
@@ -14,6 +31,8 @@ import streamlit as st
 from party_identity.domain import Party
 from rbac_scope import Role
 
+import ad_auth
+import sso_auth
 from party_helpers import disambiguate_labels
 from role_labels import ROLE_DISPLAY_NAME
 from tokens import TOKENS
@@ -85,26 +104,14 @@ def render(services) -> None:
             )
             st.divider()
 
-            any_people = False
-            for role, heading, subtitle, color in ROLE_SECTIONS:
-                parties = services.party_repo.list_by_type(role.value)
-                if not parties:
-                    continue
-                any_people = True
-                st.markdown(
-                    f'<div class="itap-role-heading">'
-                    f'<span class="dot" style="background:{color};"></span>{heading}'
-                    f"</div>",
-                    unsafe_allow_html=True,
-                )
-                labels = disambiguate_labels(parties, label_fn=lambda p: p.display_name)
-                cols = st.columns(min(len(labels), 3) or 1)
-                for i, (label, party) in enumerate(labels.items()):
-                    with cols[i % len(cols)]:
-                        if st.button(label, key=f"signin_{party.id}", width="stretch"):
-                            st.session_state["viewer_party_id"] = str(party.id)
-                            st.rerun()
-                st.write("")
+            any_people = any(
+                services.party_repo.list_by_type(role.value) for role, *_ in ROLE_SECTIONS
+            )
+
+            if any_people and ad_auth.is_configured():
+                _ad_login_form(services)
+            elif any_people:
+                _picker(services)
 
             # Solves exactly one problem: a genuinely empty deployment has no
             # one to click on this sign-in page, so there is no way in at
@@ -114,7 +121,8 @@ def render(services) -> None:
             # (or the authenticated, admin-only Onboard & Assign back door),
             # per docs/associate_journey_redesign.md's "no loose profiles"
             # principle; a public, unauthenticated sign-in page has no
-            # business creating Managers or Associates.
+            # business creating Managers or Associates. Shown regardless of
+            # AD config — nobody to authenticate against yet either way.
             if not any_people:
                 st.info("No one is set up yet — add the first ITAP Admin below.")
                 with st.expander("Add the first ITAP Admin", expanded=True):
@@ -137,3 +145,68 @@ def render(services) -> None:
                                 )
                             )
                             st.rerun()
+
+
+def _picker(services) -> None:
+    """The dev-mode "click any name" picker — no credentials at all.
+    Shown only when AD login isn't configured (`ad_auth.is_configured()`
+    is False); see this module's docstring for the full precedence."""
+    for role, heading, subtitle, color in ROLE_SECTIONS:
+        parties = services.party_repo.list_by_type(role.value)
+        if not parties:
+            continue
+        st.markdown(
+            f'<div class="itap-role-heading">'
+            f'<span class="dot" style="background:{color};"></span>{heading}'
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+        labels = disambiguate_labels(parties, label_fn=lambda p: p.display_name)
+        cols = st.columns(min(len(labels), 3) or 1)
+        for i, (label, party) in enumerate(labels.items()):
+            with cols[i % len(cols)]:
+                if st.button(label, key=f"signin_{party.id}", width="stretch"):
+                    st.session_state["viewer_party_id"] = str(party.id)
+                    st.rerun()
+        st.write("")
+
+
+def _ad_login_form(services) -> None:
+    """A real username + password login, authenticated by an LDAP bind
+    against Active Directory (`ad_auth.py`) — shown instead of the
+    dev-mode picker once `AD_SERVER` is configured. A wrong password (or
+    an unreachable AD server) and an account that binds fine but has no
+    matching ITAP Party both show the same generic error — a login form
+    should never reveal which case it was."""
+    st.caption("Sign in with your organization account.")
+    with st.form("ad_login"):
+        username = st.text_input("Username", key="ad_login_username")
+        password = st.text_input("Password", type="password", key="ad_login_password")
+        submitted = st.form_submit_button("Sign in", type="primary", width="stretch")
+
+    if not submitted:
+        return
+
+    ad_user = ad_auth.authenticate(username, password)
+    if ad_user is None:
+        st.error("Invalid username or password.")
+        return
+
+    identity = ad_user.email or ad_user.username
+    party = sso_auth.find_party_by_sso_identity(services.party_repo, identity)
+    if party is None:
+        st.error(
+            "That's a valid organization login, but no ITAP account is "
+            "provisioned for it yet. Ask your ITAP Admin to onboard you "
+            "(matching this email), then try again."
+        )
+        return
+
+    st.session_state["viewer_party_id"] = str(party.id)
+    # app.py forces the dev-mode "Switch person" control off for the rest
+    # of this session when this is set — same reasoning as its SSO-header
+    # case: someone who just authenticated with a real AD password must
+    # never be able to fall back to the picker and impersonate someone
+    # else, misconfiguration or not.
+    st.session_state["authenticated_via"] = "ad"
+    st.rerun()

@@ -4,7 +4,7 @@ The front door over `capabilities/party_identity`, `capabilities/assignment`,
 and `capabilities/rbac_scope`. Contains no business logic itself — every
 action goes through `AssignmentService` or `ScopedAssignmentQueries`.
 
-## Identity: CML SSO passthrough, with a dev-mode picker as fallback
+## Identity: CML SSO passthrough, AD login, or a dev-mode picker
 
 **`sso_auth.py`** is the real-auth path, checked first on every run of
 `app.py`. A CML Application sits behind CML's own authenticating
@@ -33,14 +33,37 @@ header of that same name before setting its own, so it can't be spoofed
 by someone hitting the Application directly.
 
 When no such header is present at all (plain local `streamlit run`, or
-a workspace with SSO passthrough not enabled) `sso_auth.py` returns
-`None` and everything falls back to the **dev-mode picker** unchanged:
-`home.py`'s landing/sign-in screen, styled as a pitch panel ("one
-address, three experiences") next to the actual sign-in card — the one
-place a person is chosen by hand (stored in
-`st.session_state["viewer_party_id"]`), not a sidebar dropdown that
-also drives page titles. Once signed in, a persistent header (`app.py`)
-shows "Signed in as {name} ({role})" with a "Switch person" control.
+a workspace with SSO passthrough not enabled), `home.py`'s landing/
+sign-in card checks one more thing before falling back to the dev-mode
+picker:
+
+**`ad_auth.py`** is a real username + password login, authenticated by
+an LDAP bind directly against your corporate Active Directory — for
+when CML SSO passthrough isn't available yet, or the app runs somewhere
+outside CML's own proxy entirely. Set `AD_SERVER` (a domain controller
+hostname/IP) and `home.py` swaps its picker for an actual login form;
+leave it unset and nothing changes. The bind itself *is* the auth check
+— a wrong password fails it and ITAP never stores or compares a
+password of its own. On a successful bind, the authenticated identity
+(email, if `AD_BASE_DN` is configured for the follow-up lookup;
+otherwise the raw username) is matched against Party `attributes["email"]`
+via the same `sso_auth.find_party_by_sso_identity()` used for CML SSO —
+one matching convention, two ways to arrive at an identity to match.
+See `ad_auth.py`'s module docstring for the full list of AD-side config
+(`AD_PORT`/`AD_USE_SSL`/`AD_DOMAIN`/`AD_BASE_DN`) — none of it is
+guessable from this codebase; get it from your AD/IT team and test
+against a real account, since this session had no real Active Directory
+to verify a bind against. Uses `ldap3` (pure Python, no system
+libldap/openldap build dependency).
+
+With neither an SSO header nor `AD_SERVER` configured, everything falls
+back to the **dev-mode picker** unchanged: `home.py`'s landing/sign-in
+screen, styled as a pitch panel ("one address, three experiences") next
+to the actual sign-in card — the one place a person is chosen by hand
+(stored in `st.session_state["viewer_party_id"]`), not a sidebar
+dropdown that also drives page titles. Once signed in, a persistent
+header (`app.py`) shows "Signed in as {name} ({role})" with a "Switch
+person" control.
 
 `role_labels.py` holds the product-facing name for each role — "ITAP
 Admin" / "Line Manager" / "Associate" — shared between `home.py`'s

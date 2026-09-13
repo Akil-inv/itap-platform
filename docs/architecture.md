@@ -129,7 +129,9 @@ ITAP itself is intended to be almost entirely configuration on top of the
    whether landing data there for governance/reporting (via the outbox
    sync) is sufficient. Current design assumes the latter.
 4. ~~Real auth: SSO passthrough vs. a dedicated login screen.~~
-   **Resolved (2026-09-13): SSO passthrough**, per Cloudera's documented
+   **Resolved (2026-09-13): both**, in a defined precedence — CML SSO
+   passthrough first, a real AD-bound login page second, the dev-mode
+   picker last as fallback. SSO passthrough is per Cloudera's documented
    `Remote-User` header convention for CML Applications behind an
    authenticating reverse proxy — see `apps/streamlit_ui/sso_auth.py`
    and its README section. Three sub-items still need this session's
@@ -141,6 +143,29 @@ ITAP itself is intended to be almost entirely configuration on top of the
    couldn't reach docs.cloudera.com to verify against the real gateway
    config; treat the header as spoofable until a CML admin confirms
    otherwise).
+
+   **AD login (2026-09-13, `apps/streamlit_ui/ad_auth.py`)** — a second,
+   independent real-auth path: a real username + password form
+   (`home.py`) authenticated by an LDAP bind directly against Active
+   Directory, for when SSO passthrough isn't turned on yet or the app
+   runs somewhere outside CML's own proxy. Checked inside `home.py`
+   whenever `sso_auth.get_sso_identity()` comes back empty and
+   `AD_SERVER` is set; falls through to the dev-mode picker when neither
+   applies. Shares `sso_auth.find_party_by_sso_identity()` for the
+   post-auth Party lookup — one matching convention regardless of which
+   path authenticated the request. `app.py`'s `DEV_MODE` (the "Switch
+   person" control) is force-disabled for an AD-authenticated session
+   the same way it already was for an SSO one, via a
+   `st.session_state["authenticated_via"]` flag `home.py` sets on a
+   successful bind — a real logged-in user must never be able to fall
+   back to impersonating someone else, whichever door they came in
+   through. This session had no real Active Directory to bind against,
+   so `AD_PORT`/`AD_USE_SSL`/`AD_DOMAIN`/`AD_BASE_DN` are configuration
+   points to get from an AD/IT team and verify against a real account,
+   not confirmed facts — see `ad_auth.py`'s module docstring. Covered by
+   `test_ad_login.py` (monkeypatches the LDAP bind itself, since there's
+   no real AD here, but exercises the real Party-matching, error paths,
+   and the DEV_MODE force-off through the actual app).
 
 These block Phase 2+ (Iceberg sync, Flowable/Drools adapters) but do not
 block Phase 1 (Party/Identity + Assignment Engine + Rule Engine, all

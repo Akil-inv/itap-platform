@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # Rebuilds the offline dependency bundle from scratch, for air-gapped
-# CML deployment (see README.md in this directory). Run on any machine
+# CML deployment (see README.md in this directory). Builds for
+# **linux x86_64** only — the assumed CML Runtime target; for a macOS
+# dry-run bundle (or any other platform), swap the manylinux --platform
+# flags below for the target platform's own tags (see README.md's
+# "Adding another platform/Python combo" section) and change the
+# `linux_x86_64-py...` prefix on DEST to match, since install_offline.sh
+# looks wheels up by "<os>_<arch>-py<version>". Run this on any machine
 # WITH internet access (this doesn't need to be the air-gapped CML box
 # itself) — `pip download` fetches prebuilt manylinux wheels for each
 # target Python version without needing that interpreter installed
@@ -34,7 +40,7 @@ mkdir -p "$HERE/wheelhouse/local"
 
 for PYVER in "${PYVERSIONS[@]}"; do
   ABI="cp${PYVER//./}"
-  DEST="$HERE/wheelhouse/py${PYVER//./}"
+  DEST="$HERE/wheelhouse/linux_x86_64-py${PYVER//./}"
   echo "=== Downloading wheels for Python $PYVER ($ABI) ==="
   python3 -m pip download \
     --only-binary=:all: \

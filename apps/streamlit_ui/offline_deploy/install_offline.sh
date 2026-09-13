@@ -37,7 +37,7 @@ KEY="${OS_ARCH}-${PYVER}"
 if [ ! -d "$HERE/wheelhouse/$KEY" ]; then
   echo "No prebuilt wheels for $KEY in this bundle." >&2
   echo "Available: $(ls "$HERE/wheelhouse" | grep -v '^local$' | tr '\n' ' ')" >&2
-  echo "Re-run build_offline_bundle.sh (linux) or build_offline_bundle_macos.sh (macOS) for this combo on a machine with internet access, then re-copy the bundle." >&2
+  echo "Re-run build_offline_bundle.sh (linux) for this combo on a machine with internet access, then re-copy the bundle." >&2
   exit 1
 fi
 

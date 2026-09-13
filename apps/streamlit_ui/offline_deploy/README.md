@@ -33,6 +33,12 @@ driver SQLAlchemy actually needs to talk to Postgres; without it,
 connecting raises `ModuleNotFoundError: No module named 'psycopg2'`
 regardless of how the rest of the app is packaged.
 
+`ldap3` (+ its one dependency, `pyasn1`) was added later for
+`apps/streamlit_ui/ad_auth.py` — a real username/password login bound
+against Active Directory, as a second real-auth path alongside CML SSO
+passthrough. See that module's docstring (on `main`) for the AD-side
+config it needs.
+
 ## Installing
 
 ```bash

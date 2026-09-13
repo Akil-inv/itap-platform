@@ -3,13 +3,15 @@
 Identity/routing model: a landing page (home.py) is the one place a
 person is chosen, stored in st.session_state — not a sidebar dropdown
 that doubles as page navigation. This is the dev-mode stand-in for real
-auth; `sso_auth.py` is the actual CML SSO passthrough path, checked
-first on every run — see its docstring for the mechanism and what still
-needs confirming with a CML admin. When it identifies a signed-in
-person, home.py's picker is skipped entirely: real auth means never
-choosing who you are. Everything below the identity resolution (services,
-views, RBAC enforcement) does not change either way; it only needs a
-Viewer, however that gets constructed.
+auth. There are two real-auth paths ahead of it: `sso_auth.py` (CML SSO
+passthrough, checked right here in app.py, first on every run — see its
+docstring for the mechanism) and `ad_auth.py` (a real username/password
+login bound against Active Directory, checked inside home.py itself
+when there's no SSO header). Either one identifying a signed-in person
+skips the picker entirely: real auth means never choosing who you are.
+Everything below the identity resolution (services, views, RBAC
+enforcement) does not change either way; it only needs a Viewer,
+however that gets constructed.
 
 Page headings are product/task-oriented ("My Team", "My Journey",
 "Workforce Overview"), not the signed-in person's name or role — the
@@ -115,11 +117,15 @@ viewer_party_id = st.session_state["viewer_party_id"]
 # removes the one-click "become anyone" affordance until real auth exists.
 # This is a safety valve, not a security boundary: it doesn't protect
 # the underlying service calls, which have no auth of their own yet.
-# Forced off whenever an SSO identity is present, regardless of the env
-# var — a real logged-in user must never be able to impersonate someone
-# else, misconfiguration or not.
-DEV_MODE = (not sso_identity) and os.environ.get("ITAP_DEV_MODE", "true").lower() not in (
-    "false", "0", "no",
+# Forced off whenever an SSO identity is present, or this session
+# authenticated via home.py's AD login form (home.py sets
+# "authenticated_via" on a successful bind) — regardless of the env var,
+# since a real logged-in user must never be able to fall back to the
+# picker and impersonate someone else, misconfiguration or not.
+DEV_MODE = (
+    not sso_identity
+    and not st.session_state.get("authenticated_via")
+    and os.environ.get("ITAP_DEV_MODE", "true").lower() not in ("false", "0", "no")
 )
 
 try:
