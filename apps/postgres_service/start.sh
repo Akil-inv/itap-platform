@@ -69,12 +69,20 @@ fi
 if [ "$NEEDS_BOOTSTRAP" = "1" ]; then
   # Create the app database in a one-shot background start/stop cycle
   # (createdb needs a running server; the exec below takes over as the
-  # long-lived foreground process after this). PGPASSWORD is required
-  # here: auth is scram-sha-256, not trust (see above), so without it
-  # createdb blocks forever on an interactive password prompt with no
-  # terminal attached to answer it.
+  # long-lived foreground process after this).
+  #
+  # --maintenance-db=postgres is required: with none given, createdb's
+  # own default is a database named after the connecting user (here,
+  # PG_USER, e.g. "itap") — which doesn't exist yet on a brand new
+  # cluster, so it fails with "database ... does not exist" before it
+  # ever gets to creating one. "postgres" always exists post-initdb.
+  #
+  # PGPASSWORD is required too: auth is scram-sha-256, not trust (see
+  # above), so without it createdb blocks forever on an interactive
+  # password prompt with no terminal attached to answer it.
   "${BIN}pg_ctl" -D "$PG_DATA_DIR" -o "-p $PG_PORT" -l "$PG_DATA_DIR/bootstrap.log" -w start
-  PGPASSWORD="$PG_PASSWORD" "${BIN}createdb" -h 127.0.0.1 -p "$PG_PORT" -U "$PG_USER" "$PG_DB"
+  PGPASSWORD="$PG_PASSWORD" "${BIN}createdb" \
+    -h 127.0.0.1 -p "$PG_PORT" -U "$PG_USER" --maintenance-db=postgres "$PG_DB"
   "${BIN}pg_ctl" -D "$PG_DATA_DIR" -m fast stop
 fi
 
