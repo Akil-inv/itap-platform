@@ -7,85 +7,293 @@ Deliberately built into the app rather than linking out to an external
 docs site: this deployment already has to run fully air-gapped inside
 CML (see offline_deploy/), so an external link would be one more thing
 that's unreachable from inside the box. Editing the manual is editing
-this file (plain markdown strings below) — no separate docs pipeline to
-keep in sync.
+this file — no separate docs pipeline to keep in sync.
+
+Content is structured data, not raw markdown strings: each role gets a
+short **screen tour** (what each tab is, for orientation) followed by
+**step-by-step workflows** (what to actually click, in order, to get a
+real task done) — a reference alone doesn't tell anyone how to run the
+process end to end, which is the actual point of a manual. The same
+`MANUAL_BY_ROLE` structure is also read directly by
+`offline_deploy`-adjacent tooling that renders a downloadable PDF per
+role (see the repo's scratch `build_pdfs.py` used to spot-check this),
+so a step written here shows up identically in both places — there's
+exactly one place to keep this content accurate as the UI changes.
 """
 from __future__ import annotations
+
+from dataclasses import dataclass, field
 
 import streamlit as st
 from rbac_scope import Role
 
-_FUNCTIONAL_OWNER_MANUAL = """
-### ITAP Admin — Workforce Overview
 
-- **Associates** — every Associate, one row each: current team, a
-  tenure bar, and a status filter (Active / Needs Attention / etc.).
-  Click a name to open their full portfolio (profile, history, scores).
-- **Org Structure** — the reporting tree of Managers and Functional
-  Owners.
-- **Onboard & Assign** — add a new Associate, Manager, or Functional
-  Owner, and assign an Associate to a Manager (Primary / Secondary /
-  CCA).
-- **Setup** — one-off configuration (rotation catalog, kinds, etc.).
-- **Approvals** — review and approve/deny pending manager requests.
-- **Rotation Plans** — build and preview a rotation curve across
-  several Associates at once.
-- **Bulk Setup** — upload a Setup Workbook (.xlsx) to onboard many
-  people and assignments in one go. Use **Download demo dataset** on
-  the sign-in page first if you want to try the flow before using real
-  data — same upload path either way.
-- **Overdue** — Associates with an overdue goal-setting or episode
-  closure.
-- **Manager Handoff** — reassign an Associate from one Manager to
-  another.
-- **Consolidated Scores** — roll-up scoring view across the team.
+@dataclass
+class ScreenTour:
+    heading: str
+    bullets: list[str]
 
-**Tip:** an aggregate score is hidden behind an eye icon everywhere in
-this view — click it to reveal, per Associate, one at a time.
-"""
 
-_MANAGER_MANUAL = """
-### Line Manager — My Team
+@dataclass
+class Workflow:
+    title: str
+    steps: list[str]
+    note: str | None = None
 
-- **Current** tab — every Associate currently tasked to you (Primary,
-  Secondary, or CCA). Click a name to open their page: goals, journey
-  stepper, and your own review & scoring for the current episode.
-- **Rolled Off** tab — read-only history of Associates who have since
-  moved to a different manager.
-- **Goals** — set or view the goal-setting text for an Associate's
-  current episode. Once you freeze it, the Associate can no longer edit
-  their own copy.
-- **Review & Scoring** — score an episode. Scores you give are visible
-  to you and to the Associate's own aggregate — never surfaced as a
-  number to other managers.
 
-**Note:** you won't see a rolled-up aggregate score for your team here
-— that's an Admin-only view (Consolidated Scores). What you score stays
-attached to the specific episode you scored.
-"""
+@dataclass
+class RoleManual:
+    intro: str
+    tour: ScreenTour
+    workflows: list[Workflow] = field(default_factory=list)
 
-_AGENT_MANUAL = """
-### Associate — My Journey
 
-- **Profile** — your bio, photo, experience, and skills. Skills you add
-  yourself are always marked self-reported; skills tied to a specific
-  engagement are added by your manager or admin, not you.
-- **My Progress** — your rotation plan preview, your own aggregate
-  score (visible to no one but you), and a history of past episode
-  scores.
-- **Current Episode(s)** — one card per active assignment, with a
-  journey stepper showing where it stands. Before your manager freezes
-  goal-setting, you can edit the goal text yourself; once frozen, it's
-  read-only.
-- **Leave & Interests** — log upcoming leave dates (informational only,
-  no approval needed) and flag interest in a Team or CCA — this is a
-  standing signal to your manager/admin, not a placement request.
+_FUNCTIONAL_OWNER_MANUAL = RoleManual(
+    intro=(
+        "As an ITAP Admin you set up the org — people, teams, and "
+        "assignments — and keep it running: approvals, handoffs, and "
+        "tracking what's overdue."
+    ),
+    tour=ScreenTour(
+        heading="What's in Workforce Overview",
+        bullets=[
+            "**Associates** — every Associate, one row each: current team, "
+            "a tenure bar, a status filter, and a hidden score behind an "
+            "eye icon. Click a name to open their full portfolio.",
+            "**Org Structure** — the reporting tree of Managers and "
+            "Functional Owners.",
+            "**Onboard & Assign** — add a new Associate or Manager, then "
+            "connect an Associate to a Manager.",
+            "**Setup** — one-off configuration: Skills, Teams, CCA "
+            "activities.",
+            "**Approvals** — act on Manager-raised Extension/Closure "
+            "requests, and reopen a frozen Goal Setting or Review Score.",
+            "**Rotation Plans** — build and preview a rotation curve "
+            "across several Associates at once.",
+            "**Bulk Setup** — upload a Setup Workbook (.xlsx) to onboard "
+            "many people and assignments in one pass.",
+            "**Overdue** — Associates with an overdue goal-setting or "
+            "episode closure.",
+            "**Manager Handoff** — reassign a departing Manager's whole "
+            "team to someone else, in one action.",
+            "**Consolidated Scores** — an Associate's rolled-up score "
+            "across their closed assignments.",
+        ],
+    ),
+    workflows=[
+        Workflow(
+            title="Onboard a new hire and assign them to a Manager",
+            steps=[
+                "Open **Onboard & Assign**.",
+                "Under **① Onboard people**, type the person's name (and "
+                "email, if you have it) and click **Create Associate** — "
+                "or **Create Manager**, if you're adding a manager instead.",
+                "Under **② Create an assignment**, pick the Associate and "
+                "Manager you just created (or any existing pair), set a "
+                "start date, and click **Create Assignment**.",
+                "Open **Associates** — the new Associate now shows their "
+                "Manager under \"Current team\".",
+            ],
+            note=(
+                "Email is optional today, but it's the field a future SSO "
+                "or AD login would match against — worth filling in now."
+            ),
+        ),
+        Workflow(
+            title="Bring a whole team in at once with Bulk Setup",
+            steps=[
+                "Open **Bulk Setup** and click **Download template "
+                "(.xlsx)** for a blank workbook in the expected layout — "
+                "or use the sign-in page's **Download demo dataset** "
+                "first, just to see a filled-in example.",
+                "Fill in the workbook: Admins, Managers, Associates, "
+                "Assignments, Skills, and CCA Activities each get their "
+                "own sheet.",
+                "Back in **Bulk Setup**, upload the filled-in workbook "
+                "(and a `photos.zip` too, if you have headshots).",
+                "Review the row counts and the **Preview parsed rows** "
+                "tables — nothing is written yet.",
+                "Click **Confirm and import**.",
+            ],
+            note=(
+                "Re-uploading the same workbook later is always safe: "
+                "each row is matched by its natural key (email for "
+                "people, name for catalogs) and updated in place — "
+                "nothing is ever duplicated."
+            ),
+        ),
+        Workflow(
+            title="Work the Approvals queue",
+            steps=[
+                "Open **Approvals**.",
+                "Under **Pending requests**, read each Manager's Extension "
+                "or Closure request and click **Approve** or **Deny**.",
+                "Need to fix a mistake after the fact? Use the "
+                "**reopen a frozen Goal Setting or Review Score** section "
+                "below the queue — pick the Assignment and reopen either "
+                "one.",
+            ],
+            note=(
+                "Approving a Closure request is what actually applies the "
+                "assignment's frozen Review Score and closes it out."
+            ),
+        ),
+        Workflow(
+            title="Hand off a departing Manager's whole team",
+            steps=[
+                "Open **Manager Handoff**.",
+                "Pick the **Departing manager** and the **New manager for "
+                "their team**.",
+                "Add a note if useful, then click **Reassign their whole "
+                "team**.",
+            ],
+            note=(
+                "This closes every one of the departing Manager's active "
+                "Assignments with no score — it's a handoff, not a "
+                "performance assessment — and opens a fresh Assignment "
+                "under the new Manager for each Associate."
+            ),
+        ),
+    ],
+)
 
-**Note:** only you can see your own aggregate score. No one else's
-score is visible to you either.
-"""
+_MANAGER_MANUAL = RoleManual(
+    intro=(
+        "As a Line Manager, My Team is where you track the Associates "
+        "tasked to you, agree their goals, and score their episodes once "
+        "they're done."
+    ),
+    tour=ScreenTour(
+        heading="What's in My Team",
+        bullets=[
+            "**Current** tab — every Associate currently tasked to you "
+            "(Primary, Secondary, or CCA). Click a name to open their "
+            "page.",
+            "**Rolled Off** tab — read-only history of Associates who've "
+            "since moved to a different manager.",
+            "On an Associate's own page: **Profile** (read-only), "
+            "**Goals** (set/freeze goal-setting), and **Review & "
+            "Scoring** (score a completed episode).",
+        ],
+    ),
+    workflows=[
+        Workflow(
+            title="Agree and freeze an Associate's goals",
+            steps=[
+                "On **My Team → Current**, click the Associate's name.",
+                "Open the **Goals** tab.",
+                "Type or edit the agreed goal-setting text.",
+                "Once you and the Associate agree, click **Agree & "
+                "Freeze**.",
+            ],
+            note=(
+                "Freezing locks the text — the Associate can no longer "
+                "edit their own copy after this. Only an Admin can reopen "
+                "it (via Approvals) if it needs correcting."
+            ),
+        ),
+        Workflow(
+            title="Score a finished episode",
+            steps=[
+                "Open the Associate's page and go to **Review & "
+                "Scoring**.",
+                "If goals haven't been frozen yet, freeze them on the "
+                "**Goals** tab first — there's nothing to score against "
+                "until then.",
+                "Fill in the review form and click **Submit score**.",
+            ],
+            note=(
+                "A score you give here is visible to you and rolls into "
+                "the Associate's own aggregate — it is never shown as a "
+                "number to any other Manager."
+            ),
+        ),
+        Workflow(
+            title="Request an extension or early closure",
+            steps=[
+                "Open the Associate's page.",
+                "Scroll to **Request Extension or Closure**.",
+                "Fill in the relevant form and click **Request "
+                "Extension** or **Request Closure**.",
+                "Wait for your Admin to act on it in their Approvals "
+                "queue — you'll see the request listed under **Requests "
+                "on this engagement** until it's resolved.",
+            ],
+        ),
+    ],
+)
 
-_MANUAL_BY_ROLE = {
+_AGENT_MANUAL = RoleManual(
+    intro=(
+        "My Journey is entirely your own — your profile, your progress, "
+        "your current episode(s), and your leave/interest signals. No "
+        "one else's data lives here, and no one but you sees your own "
+        "aggregate score."
+    ),
+    tour=ScreenTour(
+        heading="What's in My Journey",
+        bullets=[
+            "**Profile** — your bio, photo, experience, project "
+            "highlights, and skills.",
+            "**My Progress** — your rotation plan preview, your own "
+            "aggregate score, and a history of past episode scores.",
+            "**Current Episode(s)** — one card per active assignment, "
+            "with a journey stepper and your goal-setting text.",
+            "**Leave & Interests** — log upcoming leave and flag "
+            "interest in a Team or CCA.",
+        ],
+    ),
+    workflows=[
+        Workflow(
+            title="Fill in your profile",
+            steps=[
+                "Open **Profile**.",
+                "Fill in your bio and click **Save profile**.",
+                "Open **Add an experience entry** or **Add a project "
+                "highlight** to add more, then click **Add**.",
+                "Open **Add a skill**, type the skill name, and click "
+                "**Add skill**.",
+            ],
+            note=(
+                "A skill you add yourself is always marked self-reported. "
+                "Skills tied to a specific engagement are added by your "
+                "Manager or Admin, not by you."
+            ),
+        ),
+        Workflow(
+            title="Set your goals before your Manager freezes them",
+            steps=[
+                "Open **Current Episode(s)**.",
+                "Find the card for the relevant assignment and edit the "
+                "goal-setting text.",
+                "Click **Save**.",
+            ],
+            note=(
+                "Once your Manager clicks **Agree & Freeze** on their "
+                "side, this text becomes read-only for you."
+            ),
+        ),
+        Workflow(
+            title="Log leave or flag interest in a Team/CCA",
+            steps=[
+                "Open **Leave & Interests**.",
+                "Under **Annual leave**, pick your date range and click "
+                "**Declare leave**.",
+                "Under **Flag interest**, click **Flag interest: "
+                "<name>** next to any Team or CCA Activity you'd like to "
+                "be considered for — click **Remove interest: <name>** "
+                "later if that changes.",
+            ],
+            note=(
+                "Leave needs no approval — it's informational. Flagging "
+                "interest is a standing signal to your Manager/Admin, "
+                "never a placement request."
+            ),
+        ),
+    ],
+)
+
+MANUAL_BY_ROLE: dict[Role, RoleManual] = {
     Role.FUNCTIONAL_OWNER: _FUNCTIONAL_OWNER_MANUAL,
     Role.MANAGER: _MANAGER_MANUAL,
     Role.AGENT: _AGENT_MANUAL,
@@ -95,4 +303,18 @@ _MANUAL_BY_ROLE = {
 def render(role: Role) -> None:
     """Renders the manual for `role` inside whatever container this is
     called under (a popover, in app.py's header)."""
-    st.markdown(_MANUAL_BY_ROLE[role])
+    manual = MANUAL_BY_ROLE[role]
+    st.markdown(manual.intro)
+
+    st.markdown(f"#### {manual.tour.heading}")
+    for bullet in manual.tour.bullets:
+        st.markdown(f"- {bullet}")
+
+    if manual.workflows:
+        st.markdown("#### Step-by-step: common tasks")
+        for workflow in manual.workflows:
+            with st.expander(workflow.title):
+                for i, step in enumerate(workflow.steps, start=1):
+                    st.markdown(f"{i}. {step}")
+                if workflow.note:
+                    st.caption(workflow.note)
