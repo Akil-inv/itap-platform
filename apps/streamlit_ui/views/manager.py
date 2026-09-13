@@ -18,13 +18,13 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from party_identity.domain import Party
-from rbac_scope import Viewer
-
 import streamlit as st
 from assignment.domain import AssignmentKind
 from battery import render_html as render_battery_html
+from party_identity.domain import Party, PartyNotFound
 from person_row import render_person_row
+from rbac_scope import Viewer
+
 from views import manager_associate
 
 
@@ -33,7 +33,7 @@ def render(services, viewer: Viewer, current_party: Party) -> None:
     if selected_id is not None:
         try:
             agent = services.party_repo.get(UUID(selected_id))
-        except Exception:
+        except (ValueError, PartyNotFound):
             del st.session_state["selected_manager_associate_id"]
             st.rerun()
             return

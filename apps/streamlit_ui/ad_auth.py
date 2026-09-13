@@ -45,7 +45,6 @@ from __future__ import annotations
 import os
 import ssl
 from dataclasses import dataclass
-from typing import Optional
 
 from ldap3 import ALL, SIMPLE, Connection, Server, Tls
 
@@ -59,8 +58,8 @@ AD_BASE_DN = os.environ.get("AD_BASE_DN", "")
 @dataclass
 class ADUser:
     username: str
-    email: Optional[str]
-    display_name: Optional[str]
+    email: str | None
+    display_name: str | None
 
 
 def is_configured() -> bool:
@@ -73,7 +72,7 @@ def _build_principal(username: str) -> str:
     return f"{username}@{AD_DOMAIN}" if AD_DOMAIN else username
 
 
-def authenticate(username: str, password: str) -> Optional[ADUser]:
+def authenticate(username: str, password: str) -> ADUser | None:
     """Attempts an LDAP bind as `username`/`password` against the
     configured AD server. Returns an ADUser on success (email/
     display_name populated only if AD_BASE_DN is set and the follow-up
@@ -109,5 +108,6 @@ def authenticate(username: str, password: str) -> Optional[ADUser]:
 
         conn.unbind()
         return ADUser(username=username, email=email, display_name=display_name)
-    except Exception:
+    except Exception:  # noqa: BLE001 — see this function's docstring:
+        # deliberately never raises, and never distinguishes why.
         return None

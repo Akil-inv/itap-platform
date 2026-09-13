@@ -25,7 +25,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-
 # --- Neutrals ---------------------------------------------------------
 # A light-mode gray ramp built by varying lightness only, 0 (white) to
 # 900 (near-black text), not by picking unrelated grays.

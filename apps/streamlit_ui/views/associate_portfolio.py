@@ -12,13 +12,10 @@ are a later phase per the task scope.
 """
 from __future__ import annotations
 
-from datetime import date
-from uuid import UUID
-
 import streamlit as st
+from assignment.clock import today as clock_today
 from assignment.domain import AssignmentKind, DuplicateAssignment
 from catalog.domain import InterestTargetType, SkillSource
-
 from party_helpers import disambiguate_labels, safe_get_name
 from person_row import avatar_html
 
@@ -73,9 +70,8 @@ def _profile_section(services, agent, profile) -> None:
             "Update photo", type=["png", "jpg", "jpeg", "gif", "webp"]
         )
         if st.form_submit_button("Save profile"):
-            from catalog.domain import AssociateProfile
-
             import photo_storage
+            from catalog.domain import AssociateProfile
 
             photo_url = profile.photo_url if profile else None
             if uploaded_photo is not None:
@@ -105,19 +101,18 @@ def _profile_section(services, agent, profile) -> None:
                 st.caption(e.description)
     else:
         st.caption("No prior experience entries yet.")
-    with st.expander("Add an experience entry"):
-        with st.form(f"add_experience_{agent.id}"):
-            title = st.text_input("Title")
-            description = st.text_area("Description", key=f"exp_desc_{agent.id}")
-            if st.form_submit_button("Add") and title:
-                from catalog.domain import AssociateProfile, ExperienceEntry
+    with st.expander("Add an experience entry"), st.form(f"add_experience_{agent.id}"):
+        title = st.text_input("Title")
+        description = st.text_area("Description", key=f"exp_desc_{agent.id}")
+        if st.form_submit_button("Add") and title:
+            from catalog.domain import AssociateProfile, ExperienceEntry
 
-                base = profile or AssociateProfile(agent_id=agent.id)
-                base.experience = list(base.experience) + [
-                    ExperienceEntry(title=title, description=description)
-                ]
-                services.catalog_service.update_profile(base)
-                st.rerun()
+            base = profile or AssociateProfile(agent_id=agent.id)
+            base.experience = list(base.experience) + [
+                ExperienceEntry(title=title, description=description)
+            ]
+            services.catalog_service.update_profile(base)
+            st.rerun()
 
     st.subheader("Project highlights")
     if profile and profile.project_highlights:
@@ -125,19 +120,18 @@ def _profile_section(services, agent, profile) -> None:
             st.markdown(f"- **{h.title}**" + (f" — {h.description}" if h.description else ""))
     else:
         st.caption("No project highlights yet.")
-    with st.expander("Add a project highlight"):
-        with st.form(f"add_highlight_{agent.id}"):
-            title = st.text_input("Title", key=f"hl_title_{agent.id}")
-            description = st.text_area("Description", key=f"hl_desc_{agent.id}")
-            if st.form_submit_button("Add") and title:
-                from catalog.domain import AssociateProfile, ProjectHighlight
+    with st.expander("Add a project highlight"), st.form(f"add_highlight_{agent.id}"):
+        title = st.text_input("Title", key=f"hl_title_{agent.id}")
+        description = st.text_area("Description", key=f"hl_desc_{agent.id}")
+        if st.form_submit_button("Add") and title:
+            from catalog.domain import AssociateProfile, ProjectHighlight
 
-                base = profile or AssociateProfile(agent_id=agent.id)
-                base.project_highlights = list(base.project_highlights) + [
-                    ProjectHighlight(title=title, description=description)
-                ]
-                services.catalog_service.update_profile(base)
-                st.rerun()
+            base = profile or AssociateProfile(agent_id=agent.id)
+            base.project_highlights = list(base.project_highlights) + [
+                ProjectHighlight(title=title, description=description)
+            ]
+            services.catalog_service.update_profile(base)
+            st.rerun()
 
     st.subheader("Skills")
     st.caption(
@@ -203,8 +197,8 @@ def _overlapping(all_assignments, stage_start, stage_end):
 
 
 def _timeline_section(services, agent, all_assignments) -> None:
-    from battery import primary_assignments
     import journey_curve
+    from battery import primary_assignments
 
     primaries = primary_assignments(all_assignments)
     if not primaries:
@@ -230,7 +224,6 @@ def _timeline_section(services, agent, all_assignments) -> None:
     )
     journey_curve.render(stage_names, stage_subs=stage_subs, progress=float(active_index), height=260)
 
-    today = date.today()
     for i, primary in enumerate(primaries):
         is_active = primary.state.value == "active"
         stage_end = None if is_active else primary.end_date
@@ -337,7 +330,7 @@ def _actions_section(services, viewer, agent, all_assignments) -> None:
                         services.assignment_service.create_assignment(
                             agent_id=agent.id,
                             manager_id=manager_labels[next_manager_label].id,
-                            start_date=date.today(),
+                            start_date=clock_today(),
                             kind=AssignmentKind.PRIMARY,
                         )
                     st.success("Closed" + (" and advanced." if advance_now else "."))
@@ -353,7 +346,7 @@ def _actions_section(services, viewer, agent, all_assignments) -> None:
     else:
         with st.form(f"add_secondary_{agent.id}"):
             manager_choice = st.selectbox("Manager", list(manager_labels.keys()), key=f"sec_mgr_{agent.id}")
-            start = st.date_input("Start date", value=date.today(), key=f"sec_start_{agent.id}")
+            start = st.date_input("Start date", value=clock_today(), key=f"sec_start_{agent.id}")
             if st.form_submit_button("Add Secondary"):
                 try:
                     services.assignment_service.create_assignment(
@@ -376,7 +369,7 @@ def _actions_section(services, viewer, agent, all_assignments) -> None:
         cca_labels = {c.name: c for c in ccas}
         with st.form(f"log_cca_{agent.id}"):
             cca_choice = st.selectbox("CCA activity", list(cca_labels.keys()))
-            start = st.date_input("Start date", value=date.today(), key=f"cca_start_{agent.id}")
+            start = st.date_input("Start date", value=clock_today(), key=f"cca_start_{agent.id}")
             if st.form_submit_button("Log CCA"):
                 cca = cca_labels[cca_choice]
                 try:

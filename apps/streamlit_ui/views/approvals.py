@@ -31,12 +31,10 @@ Two sections:
 """
 from __future__ import annotations
 
-from assignment.domain import RequestType
-
-import streamlit as st
-
 import rotation_plan_bridge
-from party_helpers import disambiguate_labels, safe_get_name
+import streamlit as st
+from assignment.domain import AssignmentNotFound, RequestType
+from party_helpers import safe_get_name
 
 
 def render(services, viewer) -> None:
@@ -72,7 +70,7 @@ def _pending_requests_section(services, viewer) -> None:
     for request in sorted(requests, key=lambda r: r.requested_at):
         try:
             assignment = services.assignment_repo.get(request.assignment_id)
-        except Exception:
+        except AssignmentNotFound:
             continue
         agent_name = safe_get_name(services.party_repo, assignment.agent_id)
         manager_name = safe_get_name(services.party_repo, assignment.manager_id)
@@ -106,19 +104,17 @@ def _pending_requests_section(services, viewer) -> None:
                         st.rerun()
                     except ValueError as e:
                         st.error(str(e))
-            with cols[1]:
-                with st.popover("Deny"):
-                    with st.form(f"deny_form_{request.id}"):
-                        deny_notes = st.text_area("Reason (optional)", key=f"deny_notes_{request.id}")
-                        if st.form_submit_button("Confirm deny"):
-                            try:
-                                services.assignment_service.deny_change_request(
-                                    request.id, decided_by=viewer.party_id, notes=deny_notes or None
-                                )
-                                st.success(f"{label} request denied.")
-                                st.rerun()
-                            except ValueError as e:
-                                st.error(str(e))
+            with cols[1], st.popover("Deny"), st.form(f"deny_form_{request.id}"):
+                deny_notes = st.text_area("Reason (optional)", key=f"deny_notes_{request.id}")
+                if st.form_submit_button("Confirm deny"):
+                    try:
+                        services.assignment_service.deny_change_request(
+                            request.id, decided_by=viewer.party_id, notes=deny_notes or None
+                        )
+                        st.success(f"{label} request denied.")
+                        st.rerun()
+                    except ValueError as e:
+                        st.error(str(e))
 
 
 # --- Reopen frozen Goals / Review Score ----------------------------------

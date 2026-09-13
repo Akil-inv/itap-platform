@@ -16,9 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from enum import Enum
-from typing import Optional
 from uuid import UUID, uuid4
-
 
 # --- Setup catalogs -------------------------------------------------------
 
@@ -122,8 +120,8 @@ class ExperienceEntry:
 
     title: str
     description: str = ""
-    start_date: Optional[date] = None
-    end_date: Optional[date] = None
+    start_date: date | None = None
+    end_date: date | None = None
 
 
 @dataclass
@@ -145,7 +143,7 @@ class AssociateProfile:
 
     agent_id: UUID
     bio: str = ""
-    photo_url: Optional[str] = None
+    photo_url: str | None = None
     experience: list[ExperienceEntry] = field(default_factory=list)
     project_highlights: list[ProjectHighlight] = field(default_factory=list)
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -186,8 +184,8 @@ class InterestActivity:
     CatalogService.has_unseen_interest_change."""
 
     agent_id: UUID
-    raised_at: Optional[datetime] = None
-    seen_at: Optional[datetime] = None
+    raised_at: datetime | None = None
+    seen_at: datetime | None = None
 
 
 # --- Annual leave ------------------------------------------------------------
@@ -243,7 +241,7 @@ class UploadAudit:
     kind: UploadKind
     filename: str
     id: UUID = field(default_factory=uuid4)
-    uploaded_by: Optional[UUID] = None
+    uploaded_by: UUID | None = None
     uploaded_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     summary: dict = field(default_factory=dict)
     errors: list = field(default_factory=list)

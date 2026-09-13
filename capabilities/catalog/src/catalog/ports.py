@@ -7,8 +7,7 @@ each, and splitting them would add indirection without a present need.
 """
 from __future__ import annotations
 
-from datetime import date
-from typing import Optional, Protocol
+from typing import Protocol
 from uuid import UUID
 
 from .domain import (
@@ -58,7 +57,7 @@ class CatalogRepo(Protocol):
     def list_associate_skills(self, agent_id: UUID) -> list[AssociateSkill]: ...
 
     # -- Associate profile (one per agent) --
-    def get_profile(self, agent_id: UUID) -> Optional[AssociateProfile]: ...
+    def get_profile(self, agent_id: UUID) -> AssociateProfile | None: ...
 
     def upsert_profile(self, profile: AssociateProfile) -> None: ...
 
@@ -69,7 +68,7 @@ class CatalogRepo(Protocol):
 
     def list_interest_flags(self, agent_id: UUID) -> list[InterestFlag]: ...
 
-    def get_interest_activity(self, agent_id: UUID) -> Optional[InterestActivity]: ...
+    def get_interest_activity(self, agent_id: UUID) -> InterestActivity | None: ...
 
     def upsert_interest_activity(self, activity: InterestActivity) -> None: ...
 

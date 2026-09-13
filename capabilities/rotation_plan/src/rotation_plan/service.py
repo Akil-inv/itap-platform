@@ -2,10 +2,15 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import datetime, timezone
-from typing import Optional
 from uuid import UUID
 
-from .domain import AlreadyEnrolled, Enrollment, NoNextStage, RotationPlan, StageIndexOutOfRange
+from .domain import (
+    AlreadyEnrolled,
+    Enrollment,
+    NoNextStage,
+    RotationPlan,
+    StageIndexOutOfRange,
+)
 from .ports import RotationPlanRepo
 
 
@@ -27,7 +32,7 @@ class RotationPlanService:
         name: str,
         stage_names: list[str],
         weeks_per_stage: int = 8,
-        default_stage_managers: Optional[dict[int, UUID]] = None,
+        default_stage_managers: dict[int, UUID] | None = None,
     ) -> RotationPlan:
         plan = RotationPlan(
             name=name,
@@ -39,7 +44,7 @@ class RotationPlanService:
         return plan
 
     def set_default_manager(
-        self, plan_id: UUID, stage_index: int, manager_id: Optional[UUID]
+        self, plan_id: UUID, stage_index: int, manager_id: UUID | None
     ) -> RotationPlan:
         """Set (or, with `manager_id=None`, clear) which Manager should
         get a new Assignment automatically when an Enrollment reaches
@@ -62,8 +67,8 @@ class RotationPlanService:
         self,
         plan_id: UUID,
         agent_id: UUID,
-        as_of: Optional[datetime] = None,
-        assignment_id: Optional[UUID] = None,
+        as_of: datetime | None = None,
+        assignment_id: UUID | None = None,
     ) -> Enrollment:
         self._repo.get_plan(plan_id)  # raises RotationPlanNotFound if missing
         if self._repo.get_enrollment_for_agent(agent_id, plan_id) is not None:
@@ -83,8 +88,8 @@ class RotationPlanService:
     def advance_stage(
         self,
         enrollment_id: UUID,
-        as_of: Optional[datetime] = None,
-        assignment_id: Optional[UUID] = None,
+        as_of: datetime | None = None,
+        assignment_id: UUID | None = None,
     ) -> Enrollment:
         enrollment = self._repo.get_enrollment(enrollment_id)
         plan = self._repo.get_plan(enrollment.plan_id)
@@ -122,7 +127,7 @@ class RotationPlanService:
         return self._repo.get_enrollment(enrollment_id)
 
     def progress_value(
-        self, enrollment: Enrollment, plan: RotationPlan, as_of: Optional[datetime] = None
+        self, enrollment: Enrollment, plan: RotationPlan, as_of: datetime | None = None
     ) -> float:
         """Fractional position along the plan (for a "you are here" curve
         marker): the completed-stage count plus how far into the current

@@ -36,6 +36,7 @@ Goals/Review & Scoring only ever act on an *active* engagement.
 """
 from __future__ import annotations
 
+import streamlit as st
 from assignment.domain import (
     ChangeRequestNotFound,
     ConcurrentModification,
@@ -44,9 +45,6 @@ from assignment.domain import (
     ReviewScoreFrozen,
 )
 from assignment.rules import TransitionDenied
-
-import streamlit as st
-
 from person_row import avatar_html
 
 ACTIONABLE_ERRORS = (
@@ -341,41 +339,39 @@ def _review_scoring_section(services, viewer, assignment) -> None:
         "before anything changes, from the Functional Owner's Approvals tab."
     )
     req_cols = st.columns(2)
-    with req_cols[0]:
-        with st.form(f"request_extension_{assignment.id}"):
-            from datetime import date, timedelta
+    with req_cols[0], st.form(f"request_extension_{assignment.id}"):
+        from datetime import timedelta
 
-            floor = assignment.end_date or assignment.start_date
-            new_end = st.date_input(
-                "New end date", value=floor + timedelta(days=90), min_value=floor + timedelta(days=1)
-            )
-            if st.form_submit_button("Request Extension"):
-                try:
-                    services.assignment_service.request_change(
-                        assignment.id,
-                        request_type=RequestType.EXTENSION,
-                        requested_by=viewer.party_id,
-                        new_end_date=new_end,
-                    )
-                    st.success("Extension requested — pending admin approval.")
-                    st.rerun()
-                except ACTIONABLE_ERRORS as e:
-                    st.error(str(e))
-    with req_cols[1]:
-        with st.form(f"request_closure_{assignment.id}"):
-            closure_notes = st.text_area("Notes (optional)", key=f"closure_notes_{assignment.id}")
-            if st.form_submit_button("Request Closure"):
-                try:
-                    services.assignment_service.request_change(
-                        assignment.id,
-                        request_type=RequestType.CLOSURE,
-                        requested_by=viewer.party_id,
-                        notes=closure_notes,
-                    )
-                    st.success("Closure requested — pending admin approval.")
-                    st.rerun()
-                except ACTIONABLE_ERRORS as e:
-                    st.error(str(e))
+        floor = assignment.end_date or assignment.start_date
+        new_end = st.date_input(
+            "New end date", value=floor + timedelta(days=90), min_value=floor + timedelta(days=1)
+        )
+        if st.form_submit_button("Request Extension"):
+            try:
+                services.assignment_service.request_change(
+                    assignment.id,
+                    request_type=RequestType.EXTENSION,
+                    requested_by=viewer.party_id,
+                    new_end_date=new_end,
+                )
+                st.success("Extension requested — pending admin approval.")
+                st.rerun()
+            except ACTIONABLE_ERRORS as e:
+                st.error(str(e))
+    with req_cols[1], st.form(f"request_closure_{assignment.id}"):
+        closure_notes = st.text_area("Notes (optional)", key=f"closure_notes_{assignment.id}")
+        if st.form_submit_button("Request Closure"):
+            try:
+                services.assignment_service.request_change(
+                    assignment.id,
+                    request_type=RequestType.CLOSURE,
+                    requested_by=viewer.party_id,
+                    notes=closure_notes,
+                )
+                st.success("Closure requested — pending admin approval.")
+                st.rerun()
+            except ACTIONABLE_ERRORS as e:
+                st.error(str(e))
 
 
 def _pending_requests(services, assignment) -> None:

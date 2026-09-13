@@ -10,10 +10,9 @@ import os
 
 os.environ["DATABASE_URL"] = "sqlite:///./test_admin_journey_ui.db"
 
-from streamlit.testing.v1 import AppTest
-
 import test_fixtures
 from services import get_services
+from streamlit.testing.v1 import AppTest
 
 
 def click_button_labeled(at, label):
@@ -105,17 +104,17 @@ assert "Workforce Overview" in at.title[0].value
 # --- Setup page ---------------------------------------------------------
 
 # Add a new Skill, Team, and CCA activity through the real forms.
-skill_input = [t for t in at.text_input if t.label == "New skill name"][0]
+skill_input = next(t for t in at.text_input if t.label == "New skill name")
 skill_input.set_value("Public Speaking").run()
 click_button_labeled(at, "Add skill")
 assert not at.exception, f"Adding a skill raised: {at.exception}"
 
-team_input = [t for t in at.text_input if t.label == "New team name"][0]
+team_input = next(t for t in at.text_input if t.label == "New team name")
 team_input.set_value("Platform Team").run()
 click_button_labeled(at, "Add team")
 assert not at.exception, f"Adding a team raised: {at.exception}"
 
-cca_input = [t for t in at.text_input if t.label == "New CCA activity name"][0]
+cca_input = next(t for t in at.text_input if t.label == "New CCA activity name")
 cca_input.set_value("Hackathon 2026").run()
 click_button_labeled(at, "Add CCA activity")
 assert not at.exception, f"Adding a CCA activity raised: {at.exception}"

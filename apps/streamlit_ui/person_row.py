@@ -36,7 +36,6 @@ from __future__ import annotations
 import base64
 import html
 from pathlib import Path
-from typing import Optional
 
 import streamlit as st
 
@@ -45,7 +44,7 @@ _MIME_BY_SUFFIX = {
 }
 
 
-def _photo_src(photo_url: str) -> Optional[str]:
+def _photo_src(photo_url: str) -> str | None:
     """`photo_url` is either a real URL (an http(s) link, or a browser-
     ready `data:` URI already) or a local filesystem path — what
     `photo_storage.save_photo` returns, since there's no blob-storage
@@ -68,7 +67,7 @@ def _photo_src(photo_url: str) -> Optional[str]:
     return f"data:image/{mime};base64,{base64.b64encode(data).decode()}"
 
 
-def avatar_html(display_name: str, photo_url: Optional[str] = None, large: bool = False) -> str:
+def avatar_html(display_name: str, photo_url: str | None = None, large: bool = False) -> str:
     """The avatar/initials circle used both in this row component and in
     the level-2 profile page headers (`views/associate_portfolio.py`,
     `views/manager_associate.py`, `views/agent.py`) — one implementation
@@ -85,10 +84,10 @@ def render_person_row(
     *,
     key: str,
     display_name: str,
-    photo_url: Optional[str] = None,
-    sub_label: Optional[str] = None,
-    battery_html: Optional[str] = None,
-    extra_col_weights: Optional[list[float]] = None,
+    photo_url: str | None = None,
+    sub_label: str | None = None,
+    battery_html: str | None = None,
+    extra_col_weights: list[float] | None = None,
 ) -> tuple[bool, list]:
     """Renders one person row inside a bordered card. Returns
     `(clicked, extra_cols)`: `clicked` is True the run the name button was

@@ -12,8 +12,7 @@ and decoded back on the way out.
 """
 from __future__ import annotations
 
-from datetime import date, datetime
-from typing import Optional
+from datetime import date
 from uuid import UUID
 
 from sqlalchemy import (
@@ -28,8 +27,8 @@ from sqlalchemy import (
     String,
     Table,
     Text,
-    inspect,
     insert,
+    inspect,
     select,
     text,
     update,
@@ -164,7 +163,7 @@ _ALL_TABLES = [
 ]
 
 
-def _ensure_columns(engine: Engine, table: Table, backfill: Optional[dict] = None) -> None:
+def _ensure_columns(engine: Engine, table: Table, backfill: dict | None = None) -> None:
     """Additive-only schema patch — see capabilities/assignment/adapters/
     sql.py for the full rationale. Not a real migration framework."""
     inspector = inspect(engine)
@@ -303,7 +302,7 @@ class SqlCatalogRepo:
         ]
 
     # -- Associate profile --
-    def get_profile(self, agent_id: UUID) -> Optional[AssociateProfile]:
+    def get_profile(self, agent_id: UUID) -> AssociateProfile | None:
         with self._engine.connect() as conn:
             row = conn.execute(
                 select(associate_profiles_table).where(
@@ -347,7 +346,7 @@ class SqlCatalogRepo:
             ).mappings().all()
         return [_row_to_flag(r) for r in rows]
 
-    def get_interest_activity(self, agent_id: UUID) -> Optional[InterestActivity]:
+    def get_interest_activity(self, agent_id: UUID) -> InterestActivity | None:
         with self._engine.connect() as conn:
             row = conn.execute(
                 select(interest_activity_table).where(

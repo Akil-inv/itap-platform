@@ -4,7 +4,6 @@ catalog + associate self-service operations — never the repo directly.
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
-from typing import Optional
 from uuid import UUID
 
 from .domain import (
@@ -91,7 +90,7 @@ class CatalogService:
 
     # -- Associate profile --
 
-    def get_profile(self, agent_id: UUID) -> Optional[AssociateProfile]:
+    def get_profile(self, agent_id: UUID) -> AssociateProfile | None:
         return self._repo.get_profile(agent_id)
 
     def update_profile(self, profile: AssociateProfile) -> AssociateProfile:
@@ -171,9 +170,9 @@ class CatalogService:
         kind: UploadKind,
         filename: str,
         raw_file: bytes,
-        summary: Optional[dict] = None,
-        errors: Optional[list] = None,
-        uploaded_by: Optional[UUID] = None,
+        summary: dict | None = None,
+        errors: list | None = None,
+        uploaded_by: UUID | None = None,
     ) -> UploadAudit:
         audit = UploadAudit(
             uploaded_by_name=uploaded_by_name,

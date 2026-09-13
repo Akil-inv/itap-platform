@@ -3,10 +3,9 @@ from __future__ import annotations
 from collections import Counter
 from uuid import UUID
 
-from party_identity.domain import Party
+from party_identity.domain import Party, PartyNotFound
 from party_identity.ports import PartyRepo
 from rbac_scope import Role
-
 from role_labels import ROLE_DISPLAY_NAME
 
 
@@ -39,5 +38,5 @@ def disambiguate_labels(parties: list[Party], label_fn=party_label) -> dict[str,
 def safe_get_name(party_repo: PartyRepo, party_id: UUID) -> str:
     try:
         return party_repo.get(party_id).display_name
-    except Exception:
+    except PartyNotFound:
         return f"<unknown {party_id}>"

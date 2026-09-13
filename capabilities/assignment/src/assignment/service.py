@@ -4,11 +4,8 @@ or the RuleEngine directly.
 """
 from __future__ import annotations
 
-from datetime import date
-from typing import Optional
+from datetime import date, datetime, timezone
 from uuid import UUID
-
-from datetime import datetime, timezone
 
 from .clock import today
 from .domain import (
@@ -41,7 +38,7 @@ class AssignmentService:
         agent_id: UUID,
         manager_id: UUID,
         start_date: date,
-        end_date: Optional[date] = None,
+        end_date: date | None = None,
         kind: AssignmentKind = AssignmentKind.PRIMARY,
     ) -> Assignment:
         # Only same Agent/Manager-pair duplication is rejected here — the
@@ -68,7 +65,7 @@ class AssignmentService:
         return assignment
 
     def record_goal_setting(
-        self, assignment_id: UUID, goals: str, criteria: Optional[list[str]] = None
+        self, assignment_id: UUID, goals: str, criteria: list[str] | None = None
     ) -> GoalSetting:
         """Create or edit the goal text for an Assignment — an upsert, so
         the manager/associate can keep revising it up to the point it's
@@ -140,7 +137,7 @@ class AssignmentService:
         objective_score: float,
         subjective_notes: str,
         reason: str = "completed",
-        as_of: Optional[date] = None,
+        as_of: date | None = None,
     ) -> Assignment:
         assignment = self._repo.get(assignment_id)
         has_goal_setting = self._repo.get_goal_setting(assignment_id) is not None
@@ -158,7 +155,7 @@ class AssignmentService:
         return assignment
 
     def close_administratively(
-        self, assignment_id: UUID, reason: str, notes: Optional[str] = None
+        self, assignment_id: UUID, reason: str, notes: str | None = None
     ) -> Assignment:
         """Withdrawal or manager-departure closure: no score required, not
         gated by minimum-elapsed or goal-setting — these are
@@ -170,7 +167,7 @@ class AssignmentService:
         self._repo.update(assignment)
         return assignment
 
-    def withdraw_assignment(self, assignment_id: UUID, notes: Optional[str] = None) -> Assignment:
+    def withdraw_assignment(self, assignment_id: UUID, notes: str | None = None) -> Assignment:
         """The Agent left the program (or this rotation) early. Distinct
         from close_assignment: no fabricated performance score."""
         return self.close_administratively(assignment_id, reason="withdrawn", notes=notes)
@@ -179,8 +176,8 @@ class AssignmentService:
         self,
         old_manager_id: UUID,
         new_manager_id: UUID,
-        notes: Optional[str] = None,
-        as_of: Optional[date] = None,
+        notes: str | None = None,
+        as_of: date | None = None,
     ) -> list[Assignment]:
         """The Manager is leaving. Close every one of their active
         Assignments (reason="manager_departed", no score required) and
@@ -206,7 +203,7 @@ class AssignmentService:
         return new_assignments
 
     def record_reverse_feedback(
-        self, assignment_id: UUID, notes: str, as_of: Optional[date] = None
+        self, assignment_id: UUID, notes: str, as_of: date | None = None
     ) -> ReverseFeedback:
         assignment = self._repo.get(assignment_id)
         allowed, reason = guard_min_elapsed(
@@ -273,7 +270,7 @@ class AssignmentService:
         assignment_id: UUID,
         request_type: RequestType,
         requested_by: UUID,
-        new_end_date: Optional[date] = None,
+        new_end_date: date | None = None,
         notes: str = "",
     ) -> ChangeRequest:
         """Creates a PENDING ChangeRequest — does not itself extend or
@@ -361,7 +358,7 @@ class AssignmentService:
         return request
 
     def deny_change_request(
-        self, request_id: UUID, decided_by: UUID, notes: Optional[str] = None
+        self, request_id: UUID, decided_by: UUID, notes: str | None = None
     ) -> ChangeRequest:
         request = self._repo.get_change_request(request_id)
         if request is None:
@@ -377,12 +374,12 @@ class AssignmentService:
         return request
 
     def list_overdue_goal_setting(
-        self, older_than_days: int, as_of: Optional[date] = None
+        self, older_than_days: int, as_of: date | None = None
     ) -> list[Assignment]:
         return self._repo.list_active_without_goal_setting(older_than_days, as_of=as_of)
 
     def list_overdue_closure(
-        self, older_than_days: Optional[int] = None, as_of: Optional[date] = None
+        self, older_than_days: int | None = None, as_of: date | None = None
     ) -> list[Assignment]:
         """Assignments that are past the point they could have been
         closed and still aren't — a Manager who never got around to it.

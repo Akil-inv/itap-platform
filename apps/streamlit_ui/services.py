@@ -9,8 +9,6 @@ import os
 from dataclasses import dataclass
 
 import streamlit as st
-from sqlalchemy import Engine, create_engine
-
 from assignment.adapters.sql import SqlAssignmentRepo
 from assignment.adapters.sql import create_schema as create_assignment_schema
 from assignment.ports import AssignmentRepo
@@ -27,6 +25,7 @@ from rotation_plan.adapters.sql import SqlRotationPlanRepo
 from rotation_plan.adapters.sql import create_schema as create_rotation_plan_schema
 from rotation_plan.ports import RotationPlanRepo
 from rotation_plan.service import RotationPlanService
+from sqlalchemy import Engine, create_engine
 
 
 @dataclass
