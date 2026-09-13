@@ -18,6 +18,31 @@ this same app — see `apps/postgres_service/README.md` for the full
 setup, the standalone-second-app alternative, backups, and the
 downtime runbook.
 
+## Deploying as a CML Application
+
+A CML Application assigns its own port via `CDSW_APP_PORT` and proxies
+to it on `127.0.0.1` — it does not let you pick a fixed port the way
+`streamlit run app.py` does by default. Point CML at `cml_launcher.py`,
+not `app.py` directly; the launcher just execs streamlit with the
+flags CML's proxy actually needs (`--server.port $CDSW_APP_PORT
+--server.address 127.0.0.1`, headless, CORS/XSRF checks off since
+CML's own proxy is the access boundary here, not Streamlit's).
+
+In the CML **Applications** tab, "New Application":
+
+| Field | Value |
+|---|---|
+| Script | `apps/streamlit_ui/cml_launcher.py` |
+| Subdomain | anything unused, e.g. `itap` |
+| Resource Profile | 4 vCPU / 4 GB RAM (see `apps/postgres_service/README.md`'s sizing section — this is for the whole container, Streamlit + embedded Postgres together) |
+| Environment Variables | `EMBED_POSTGRES=true`, `PG_DATA_DIR=<a path on your project's persistent storage>`, `PG_PASSWORD=<a real password>` (or set `DATABASE_URL` directly instead, if pointing at a Postgres CML already provisioned for you) |
+
+Before installing dependencies or starting the Application, run
+`apps/streamlit_ui/offline_deploy/install_offline.sh` once from a CML
+**Session** (Workbench) in the same project — Applications don't run
+an install step for you, so the packages need to already be importable
+by the time the Application starts.
+
 ## User Manual (`user_manual.py`)
 
 A "📖 User Manual" button sits in `app.py`'s persistent header, next to
