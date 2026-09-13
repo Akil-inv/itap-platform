@@ -31,6 +31,7 @@ import generate_demo_workbook
 import home
 import sso_auth
 import theme
+import user_manual
 from services import get_services
 from role_labels import ROLE_DISPLAY_NAME
 from views import agent as agent_view
@@ -146,7 +147,7 @@ except ValueError:
         st.rerun()
     st.stop()
 
-header_left, header_right = st.columns([5, 1])
+header_left, header_manual, header_switch = st.columns([5, 1, 1])
 with header_left:
     st.markdown(
         '<div style="font-size:var(--itap-font-size-xs); color:var(--itap-neutral-600);">'
@@ -154,7 +155,10 @@ with header_left:
         f"({ROLE_DISPLAY_NAME[viewer.role]})</div>",
         unsafe_allow_html=True,
     )
-with header_right:
+with header_manual:
+    with st.popover("📖 User Manual", width='stretch'):
+        user_manual.render(viewer.role)
+with header_switch:
     if DEV_MODE and st.button("Switch person", width='stretch'):
         del st.session_state["viewer_party_id"]
         st.rerun()
