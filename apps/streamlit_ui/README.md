@@ -4,19 +4,43 @@ The front door over `capabilities/party_identity`, `capabilities/assignment`,
 and `capabilities/rbac_scope`. Contains no business logic itself — every
 action goes through `AssignmentService` or `ScopedAssignmentQueries`.
 
-## Identity (dev-mode stand-in)
+## Identity: CML SSO passthrough, with a dev-mode picker as fallback
 
-There is no real login yet — real auth (CML SSO passthrough vs. a
-dedicated login screen) is an open platform question, see
-`docs/architecture.md`. `home.py` is the product's landing/sign-in
-screen, styled as a pitch panel ("one address, three experiences") next
-to the actual sign-in card — the one place a person is chosen (stored in
-`st.session_state["viewer_party_id"]`), not a sidebar dropdown that also
-drives page titles. Once signed in, a persistent header (`app.py`) shows
-"Signed in as {name} ({role})" with a "Switch person" control. Replacing
-`home.py`'s button-per-person picker with real auth only touches how
-`viewer_party_id` gets set — nothing downstream (services, views, RBAC
-enforcement) changes.
+**`sso_auth.py`** is the real-auth path, checked first on every run of
+`app.py`. A CML Application sits behind CML's own authenticating
+reverse proxy; when SSO passthrough is enabled for the workspace,
+Cloudera's documented convention is that the proxy injects the
+signed-in user's identity into a `Remote-User` HTTP header on every
+request it forwards to the app. Streamlit exposes inbound request
+headers via `st.context.headers` — `sso_auth.get_sso_identity()` reads
+that header (name overridable via the `SSO_HEADER_NAME` env var, in
+case a given workspace's gateway uses something else), and
+`find_party_by_sso_identity()` matches it against every onboarded
+Party's `attributes["email"]` (the same natural-key field
+`bulk_import.py` already uses to match/update people on re-upload — see
+its own module docstring for the exact rule). A match sets
+`viewer_party_id` and routes straight to that person's page — no picker
+step at all. No match shows a "not provisioned yet, ask your ITAP Admin"
+message, never the picker (a real logged-in person must never be
+offered a way to become someone else). This was verified against a
+real reverse-proxy topology, not just a header set from client-side JS
+— see `sso_auth.py`'s module docstring for the three things a CML
+admin still needs to confirm before trusting this in production: the
+exact header name/casing for your workspace, whether the header carries
+a username or an email (so people get onboarded with the matching
+string), and — critically — that CML's proxy strips any client-supplied
+header of that same name before setting its own, so it can't be spoofed
+by someone hitting the Application directly.
+
+When no such header is present at all (plain local `streamlit run`, or
+a workspace with SSO passthrough not enabled) `sso_auth.py` returns
+`None` and everything falls back to the **dev-mode picker** unchanged:
+`home.py`'s landing/sign-in screen, styled as a pitch panel ("one
+address, three experiences") next to the actual sign-in card — the one
+place a person is chosen by hand (stored in
+`st.session_state["viewer_party_id"]`), not a sidebar dropdown that
+also drives page titles. Once signed in, a persistent header (`app.py`)
+shows "Signed in as {name} ({role})" with a "Switch person" control.
 
 `role_labels.py` holds the product-facing name for each role — "ITAP
 Admin" / "Line Manager" / "Associate" — shared between `home.py`'s
@@ -30,10 +54,15 @@ person appears as a "Welcome back" line under the heading, not as the
 page's identity.
 
 `ITAP_DEV_MODE` (default `true`) gates the "Switch person" control and
-the landing page's picker. Setting it to `false` removes the one-click
-"become anyone" affordance — a safety valve for a "production-ish"
-deployment before real auth exists, not a real security boundary (the
-underlying service calls still have no auth of their own).
+the landing page's picker — and is force-disabled whenever an SSO
+identity is present, regardless of the env var, so a real logged-in
+person can never fall back to impersonating someone else via
+misconfiguration. Setting it to `false` in an SSO-less deployment
+removes the one-click "become anyone" affordance — a safety valve for a
+"production-ish" deployment before real auth exists, not a real
+security boundary on its own (the underlying service calls still have
+no auth of their own — SSO passthrough identifies *who's asking*, it
+doesn't add authorization checks inside `AssignmentService` etc.).
 
 ## Bulk Setup (`bulk_import.py`)
 

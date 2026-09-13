@@ -128,6 +128,19 @@ ITAP itself is intended to be almost entirely configuration on top of the
 3. Whether Impala/Iceberg is required as the live system of record, or
    whether landing data there for governance/reporting (via the outbox
    sync) is sufficient. Current design assumes the latter.
+4. ~~Real auth: SSO passthrough vs. a dedicated login screen.~~
+   **Resolved (2026-09-13): SSO passthrough**, per Cloudera's documented
+   `Remote-User` header convention for CML Applications behind an
+   authenticating reverse proxy — see `apps/streamlit_ui/sso_auth.py`
+   and its README section. Three sub-items still need this session's
+   assumption confirmed against the actual target workspace before
+   go-live: the exact header name/casing, whether it carries a username
+   or an email, and — the one that actually matters for security, not
+   just correctness — that the proxy strips any client-supplied header
+   of that same name before setting its own (unconfirmed, this session
+   couldn't reach docs.cloudera.com to verify against the real gateway
+   config; treat the header as spoofable until a CML admin confirms
+   otherwise).
 
 These block Phase 2+ (Iceberg sync, Flowable/Drools adapters) but do not
 block Phase 1 (Party/Identity + Assignment Engine + Rule Engine, all
@@ -261,14 +274,20 @@ runnable against Postgres with an in-process rule adapter).
   timezone ambiguity — this does not solve per-user local time for a
   geographically distributed program, just standardizes the server-side
   clock.
-- No field yet reserved for an external identity (email/SSO subject) as
-  a first-class Party attribute — `attributes["email"]` is populated
-  optionally by the onboarding forms as a convention, not enforced or
-  validated. Whatever real auth eventually maps against should confirm
-  this convention or replace it.
+- **Resolved (2026-09-13):** `attributes["email"]` is now the field CML
+  SSO passthrough matches against (`sso_auth.find_party_by_sso_identity`)
+  — still populated optionally by the onboarding forms as a plain string
+  convention, not enforced or validated as a real email address, exactly
+  as this note originally described. Onboarding someone whose
+  workspace's SSO header carries a bare username rather than an email
+  just means putting that username string in the same field.
 - `ITAP_DEV_MODE=false` hides the identity-switching UI but is a safety
   valve, not a security boundary — the underlying service calls have no
-  auth of their own yet. Real auth remains the actual fix.
+  auth of their own yet. SSO passthrough (now resolved, above) identifies
+  *who's asking*; it does not add authorization checks inside
+  `AssignmentService`/`ScopedAssignmentQueries` themselves. `DEV_MODE` is
+  also now force-disabled whenever an SSO identity is present for the
+  current request, regardless of the env var.
 - Linking a stage to its Assignment is still a manual admin action for
   the *first* Assignment in a plan (nothing creates that one for you at
   enrollment time) — but once a stage has a default Manager configured

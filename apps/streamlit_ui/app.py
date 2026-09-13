@@ -2,12 +2,14 @@
 
 Identity/routing model: a landing page (home.py) is the one place a
 person is chosen, stored in st.session_state — not a sidebar dropdown
-that doubles as page navigation. Real auth (SSO passthrough vs a
-dedicated login) is an open platform question — see
-docs/architecture.md "Open platform questions" — and home.py's sign-in
-step is the one thing to replace once that's answered. Everything below
-it (services, views, RBAC enforcement) does not change when real auth
-arrives; it only needs a Viewer, however that gets constructed.
+that doubles as page navigation. This is the dev-mode stand-in for real
+auth; `sso_auth.py` is the actual CML SSO passthrough path, checked
+first on every run — see its docstring for the mechanism and what still
+needs confirming with a CML admin. When it identifies a signed-in
+person, home.py's picker is skipped entirely: real auth means never
+choosing who you are. Everything below the identity resolution (services,
+views, RBAC enforcement) does not change either way; it only needs a
+Viewer, however that gets constructed.
 
 Page headings are product/task-oriented ("My Team", "My Journey",
 "Workforce Overview"), not the signed-in person's name or role — the
@@ -25,6 +27,7 @@ from rbac_scope import Role, Viewer
 
 import generate_demo_workbook
 import home
+import sso_auth
 import theme
 from services import get_services
 from role_labels import ROLE_DISPLAY_NAME
@@ -38,6 +41,14 @@ theme.inject()
 services = get_services()
 party_repo = services.party_repo
 
+# Checked first, on every run, before anything else touches identity.
+# None whenever there's no CML proxy in front asserting a signed-in
+# identity (local `streamlit run`, or SSO passthrough not enabled for
+# this workspace) — everything below falls back to the dev-mode picker
+# exactly as before in that case. See sso_auth.py's docstring for the
+# mechanism and what still needs confirming with a CML admin before
+# trusting this in production.
+sso_identity = sso_auth.get_sso_identity()
 
 all_parties = (
     party_repo.list_by_type("functional_owner")
@@ -74,11 +85,29 @@ if not all_parties:
     home.render(services)
     st.stop()
 
-viewer_party_id = st.session_state.get("viewer_party_id")
+if sso_identity:
+    # A real signed-in identity is asserted for this request — resolve
+    # it to a Party on every run (never trust whatever a prior dev-mode
+    # "Switch person" click may have left sitting in session_state) so
+    # nobody can use the picker to look at someone else's data while
+    # actually authenticated as themselves via SSO.
+    matched = sso_auth.find_party_by_sso_identity(party_repo, sso_identity)
+    if matched is None:
+        st.title("ITAP")
+        st.error(
+            f"Signed in via SSO as **{sso_identity}**, but no ITAP account "
+            "is provisioned for that identity yet. Ask your ITAP Admin to "
+            "onboard you (matching this email), then refresh this page."
+        )
+        st.stop()
+    st.session_state["viewer_party_id"] = str(matched.id)
+else:
+    viewer_party_id = st.session_state.get("viewer_party_id")
+    if viewer_party_id is None:
+        home.render(services)
+        st.stop()
 
-if viewer_party_id is None:
-    home.render(services)
-    st.stop()
+viewer_party_id = st.session_state["viewer_party_id"]
 
 # DEV_MODE gates identity switching. Default true (this whole picker is
 # a stand-in for real auth, per the docstring above) — but a misconfigured
@@ -86,7 +115,12 @@ if viewer_party_id is None:
 # removes the one-click "become anyone" affordance until real auth exists.
 # This is a safety valve, not a security boundary: it doesn't protect
 # the underlying service calls, which have no auth of their own yet.
-DEV_MODE = os.environ.get("ITAP_DEV_MODE", "true").lower() not in ("false", "0", "no")
+# Forced off whenever an SSO identity is present, regardless of the env
+# var — a real logged-in user must never be able to impersonate someone
+# else, misconfiguration or not.
+DEV_MODE = (not sso_identity) and os.environ.get("ITAP_DEV_MODE", "true").lower() not in (
+    "false", "0", "no",
+)
 
 try:
     current_party = party_repo.get(UUID(viewer_party_id))
