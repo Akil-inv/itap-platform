@@ -208,6 +208,22 @@ Application's own restart policy governs whether `start.sh` gets
 re-invoked automatically; confirm that's configured before relying on
 it.
 
+**In embedded mode specifically, you don't even need a full
+Application restart for Postgres to recover on its own.**
+`pg_embedded.py`'s `check_and_relaunch()` runs on every app rerun
+(Streamlit reruns the whole script on every click, which is what makes
+this a fast detection window) — if the Postgres subprocess has died,
+it relaunches it against the same `PG_DATA_DIR` automatically, no data
+lost (`start.sh` skips re-initializing when the data directory already
+exists). A crash-loop (Postgres dying immediately on every relaunch —
+bad data directory, disk full) is throttled to at most one relaunch
+attempt per 10 seconds rather than hammered on every rerun; if you see
+the same "relaunching" line repeating in the CML Application's logs,
+that's your signal to go look, not something that will resolve itself.
+Verified this session by killing the subprocess mid-run and confirming
+`check_and_relaunch()` detects it and brings up a fresh instance on the
+next call.
+
 ## What's NOT handled here
 
 - **Replication / high availability** — this is a single Postgres

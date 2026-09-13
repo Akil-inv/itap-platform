@@ -43,8 +43,20 @@ class Services:
     catalog_service: CatalogService
 
 
-@st.cache_resource
 def get_services() -> Services:
+    # Uncached on purpose, unlike _build_services() below: Streamlit
+    # reruns this module on every interaction, so calling the health
+    # check here means a dead embedded Postgres gets noticed and
+    # relaunched on the next click rather than needing someone to
+    # manually restart the whole CML Application. Cheap when Postgres
+    # is fine (a single process.poll()); see pg_embedded.py.
+    if pg_embedded.is_enabled():
+        pg_embedded.check_and_relaunch()
+    return _build_services()
+
+
+@st.cache_resource
+def _build_services() -> Services:
     if pg_embedded.is_enabled():
         pg_embedded.ensure_running()
         database_url = pg_embedded.database_url()
@@ -52,7 +64,14 @@ def get_services() -> Services:
         database_url = os.environ.get("DATABASE_URL", "sqlite:///itap.db")
     min_days = int(os.environ.get("MIN_DAYS_BEFORE_CLOSURE", "30"))
 
-    engine = create_engine(database_url)
+    # pool_pre_ping: tests each pooled connection with a lightweight
+    # query before handing it out, transparently reconnecting if it's
+    # dead. Without this, a Postgres relaunch (see pg_embedded.py's
+    # check_and_relaunch()) leaves the *engine* holding stale
+    # connections from before the crash -- the new Postgres process is
+    # up, but the next query would still fail until the pool happened
+    # to cycle them out on its own.
+    engine = create_engine(database_url, pool_pre_ping=True)
     create_party_schema(engine)
     create_assignment_schema(engine)
     create_rotation_plan_schema(engine)
