@@ -4,6 +4,21 @@ The front door over `capabilities/party_identity`, `capabilities/assignment`,
 and `capabilities/rbac_scope`. Contains no business logic itself — every
 action goes through `AssignmentService` or `ScopedAssignmentQueries`.
 
+## User Manual (`user_manual.py`)
+
+A "📖 User Manual" button sits in `app.py`'s persistent header, next to
+"Switch person", on every page for every signed-in role. It opens a
+popover with role-scoped how-to content (`Role.FUNCTIONAL_OWNER` /
+`MANAGER` / `AGENT` each get their own markdown block) — an Admin never
+sees Associate instructions and vice versa.
+
+Built into the app itself rather than a link to an external docs site:
+this deployment has to run fully air-gapped inside CML (see
+`offline_deploy/`), so an outbound link would be one more thing
+unreachable from inside the box. To update the manual, edit the
+markdown strings in `user_manual.py` directly — there's no separate
+docs pipeline to keep in sync.
+
 ## Identity: CML SSO passthrough, AD login, or a dev-mode picker
 
 **`sso_auth.py`** is the real-auth path, checked first on every run of
