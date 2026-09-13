@@ -210,18 +210,50 @@ def render(
       const svg = document.currentScript.previousElementSibling;
       const nodes = svg.querySelectorAll('.itap-node');
       const edges = svg.querySelectorAll('.itap-edge');
+      const ownerEdges = Array.from(edges).filter(e => e.classList.contains('itap-edge-owner'));
+      const managerEdges = Array.from(edges).filter(e => e.classList.contains('itap-edge-manager'));
+
       nodes.forEach(function(node) {
         node.addEventListener('mouseenter', function() {
           const id = node.getAttribute('data-id');
+          const tier = id.startsWith('o_') ? 'owner' : (id.startsWith('m_') ? 'manager' : 'agent');
           const connected = new Set([id]);
+          const highlighted = new Set();
+
+          function take(edge) {
+            highlighted.add(edge);
+            connected.add(edge.getAttribute('data-from'));
+            connected.add(edge.getAttribute('data-to'));
+          }
+
+          // An Owner oversees every Manager, and through them every one of
+          // their Associates — so hovering an Owner cascades two levels
+          // down, not just to its direct Manager edges. A Manager's own
+          // hover deliberately stays a single hop each way (its Owners,
+          // its own Associates) so a Manager's branch reads as its own
+          // isolated cluster rather than the whole org lighting up (every
+          // Owner oversees every Manager, so a naive full-graph traversal
+          // would highlight everything for any hover). Hovering an
+          // Associate mirrors the Owner case going the other way: its
+          // Manager(s), and the Owner(s) who oversee those Managers.
+          if (tier === 'owner') {
+            const myManagerEdges = ownerEdges.filter(e => e.getAttribute('data-from') === id);
+            myManagerEdges.forEach(take);
+            const managerIds = myManagerEdges.map(e => e.getAttribute('data-to'));
+            managerEdges.filter(e => managerIds.includes(e.getAttribute('data-from'))).forEach(take);
+          } else if (tier === 'manager') {
+            ownerEdges.filter(e => e.getAttribute('data-to') === id).forEach(take);
+            managerEdges.filter(e => e.getAttribute('data-from') === id).forEach(take);
+          } else {
+            const myManagerEdges = managerEdges.filter(e => e.getAttribute('data-to') === id);
+            myManagerEdges.forEach(take);
+            const managerIds = myManagerEdges.map(e => e.getAttribute('data-from'));
+            ownerEdges.filter(e => managerIds.includes(e.getAttribute('data-to'))).forEach(take);
+          }
+
           edges.forEach(function(edge) {
-            if (edge.getAttribute('data-from') === id || edge.getAttribute('data-to') === id) {
-              connected.add(edge.getAttribute('data-from'));
-              connected.add(edge.getAttribute('data-to'));
-              edge.classList.add('itap-highlight');
-            } else {
-              edge.classList.add('itap-dim');
-            }
+            if (highlighted.has(edge)) edge.classList.add('itap-highlight');
+            else edge.classList.add('itap-dim');
           });
           nodes.forEach(function(n2) {
             if (!connected.has(n2.getAttribute('data-id'))) n2.classList.add('itap-dim');
