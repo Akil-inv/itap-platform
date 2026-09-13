@@ -27,6 +27,8 @@ from rotation_plan.ports import RotationPlanRepo
 from rotation_plan.service import RotationPlanService
 from sqlalchemy import Engine, create_engine
 
+import pg_embedded
+
 
 @dataclass
 class Services:
@@ -43,7 +45,11 @@ class Services:
 
 @st.cache_resource
 def get_services() -> Services:
-    database_url = os.environ.get("DATABASE_URL", "sqlite:///itap.db")
+    if pg_embedded.is_enabled():
+        pg_embedded.ensure_running()
+        database_url = pg_embedded.database_url()
+    else:
+        database_url = os.environ.get("DATABASE_URL", "sqlite:///itap.db")
     min_days = int(os.environ.get("MIN_DAYS_BEFORE_CLOSURE", "30"))
 
     engine = create_engine(database_url)

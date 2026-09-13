@@ -385,10 +385,12 @@ Last updated: 2026-09-11
   "overdue goal setting" list exists, no delivery mechanism, no UI
   button does anything about it yet).
 - Outbox/Event Sync to Iceberg — deferred until the CML platform
-  questions below are answered.
-- Deploying `apps/streamlit_ui` to CML as an actual CML Application, and
-  pointing `DATABASE_URL` at a real Postgres instance there — still
-  blocked on the open platform questions below.
+  questions below (now down to two) are answered.
+- Deploying `apps/streamlit_ui` to CML as an actual CML Application.
+  `DATABASE_URL` no longer has to mean "wait for a CML-provisioned
+  Postgres" — `apps/postgres_service/` self-hosts one (see Known
+  Issues below) — but the Postgres *binaries* themselves still need to
+  be sourced for the actual target OS; nothing in this repo ships them.
 
 ### Known Issues
 
@@ -401,12 +403,23 @@ Last updated: 2026-09-11
 - Elapsed-day calculations now use UTC consistently (`assignment.clock.today()`)
   rather than server-local time, but this still doesn't account for a
   given user's own timezone in a geographically distributed program.
-- Three CML platform questions are open and block only
-  Phase 2+ (Iceberg sync, Flowable/Drools adapters), not the current
-  slice — see "Open platform questions" in `docs/architecture.md`:
-  package/runtime install rights, internal pod-to-pod networking, and
-  whether Impala/Iceberg must be the live system of record or only the
-  governed downstream copy.
+- Two CML platform questions remain open and block only Phase 2+
+  (Iceberg sync, Flowable/Drools adapters), not the current slice — see
+  "Open platform questions" in `docs/architecture.md`: internal
+  pod-to-pod networking, and whether Impala/Iceberg must be the live
+  system of record or only the governed downstream copy. The third
+  (package/runtime install rights for Postgres) is resolved/sidestepped
+  — see `apps/postgres_service/README.md`: self-hosted Postgres as a
+  subprocess of the app's own CML Application, no CML-provisioned
+  database or extra platform rights needed. Verified this session
+  against a real (non-SQLite) Postgres: schema creation, the full
+  AppTest suite, a 30-concurrent-writer stress test simulating multiple
+  Managers recording goal-setting/scores at once (the scenario that
+  prompted building this — zero errors, zero lost writes), and a full
+  backup → restore round-trip. Still unconfirmed: whether Postgres
+  binaries built elsewhere will run on your actual CML runtime's OS/glibc
+  — see that README's fallback (ask the platform team to install
+  `postgresql-server` directly).
 
 ### Important Decisions
 
