@@ -38,17 +38,16 @@ import io
 import zipfile
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 import pandas as pd
+import photo_storage
+from assignment.domain import AssignmentKind, DuplicateAssignment, GoalSettingFrozen
+from catalog.domain import CcaStatus, InterestTargetType, SkillSource
 from openpyxl import Workbook
 from openpyxl.styles import Font
 from party_identity.domain import Party
-
-import photo_storage
-from assignment.domain import AssignmentKind, DuplicateAssignment
-from catalog.domain import CcaStatus, InterestTargetType, SkillSource
 
 SHEET_ADMINS = "Admins"
 SHEET_ASSOCIATES = "Associates"
@@ -229,7 +228,7 @@ def _clean_str(value: Any) -> str:
     return str(value).strip()
 
 
-def _parse_date(value: Any) -> Optional[date]:
+def _parse_date(value: Any) -> date | None:
     if value is None or (isinstance(value, float) and pd.isna(value)):
         return None
     if isinstance(value, datetime):
@@ -245,7 +244,7 @@ def _parse_date(value: Any) -> Optional[date]:
     return parsed.date()
 
 
-def _parse_float(value: Any) -> Optional[float]:
+def _parse_float(value: Any) -> float | None:
     text = _clean_str(value)
     if not text:
         return None
@@ -398,7 +397,7 @@ def parse_workbook(file) -> ParsedWorkbook:
 @dataclass
 class RowResult:
     sheet: str
-    row: Optional[int]
+    row: int | None
     status: str  # "created" | "updated" | "reused" | "skipped" | "error"
     message: str
 
@@ -421,8 +420,8 @@ def _find_or_upsert_party(
     email: str,
     results: list[RowResult],
     row: int,
-    extra_attributes: Optional[dict[str, Any]] = None,
-) -> Optional[Party]:
+    extra_attributes: dict[str, Any] | None = None,
+) -> Party | None:
     """Match by email first, then by unambiguous exact name (same rule as
     before); a matched Party's `attributes` are upserted to whatever the
     row now says (Phase 5) rather than left untouched. `display_name`
@@ -433,7 +432,7 @@ def _find_or_upsert_party(
         return None
 
     existing = party_repo.list_by_type(party_type)
-    match: Optional[Party] = None
+    match: Party | None = None
     if email:
         match = next((p for p in existing if p.attributes.get("email") == email), None)
 
@@ -512,7 +511,7 @@ def match_photos_to_associates(
 
 
 def apply_import(
-    services, parsed: ParsedWorkbook, photos_zip: Optional[bytes] = None
+    services, parsed: ParsedWorkbook, photos_zip: bytes | None = None
 ) -> ImportResult:
     results: list[RowResult] = []
 
@@ -752,7 +751,7 @@ def _apply_assignment_row(services, associates_by_name, managers_by_name, row, r
                     assignment.id, row["goals"] or "(imported, no description)", criteria=row["criteria"]
                 )
                 changed = True
-            except Exception:
+            except GoalSettingFrozen:
                 pass  # frozen goals on a matched row — leave them alone, not a hard failure
 
     if row["status"] == "closed" and assignment.state.value == "active":
@@ -776,7 +775,10 @@ def _apply_assignment_row(services, associates_by_name, managers_by_name, row, r
             )
             changed = True
             message = f"{row['associate_name']}: closed & scored ({row['objective_score']})"
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — a bulk-import row boundary:
+            # report whatever `close_assignment` raises as this row's
+            # error and move on to the next row, rather than aborting
+            # the whole import over one bad row.
             results.append(RowResult(SHEET_ASSIGNMENTS, row["row"], "error", f"Could not close: {e}"))
             return
     elif row["status"] == "closed" and assignment.state.value == "closed":

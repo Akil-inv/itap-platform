@@ -15,7 +15,6 @@ them on assignments they hold, an Agent is meant to see their own score.
 from __future__ import annotations
 
 from datetime import date
-from typing import Optional
 from uuid import UUID
 
 from assignment.domain import Assignment, ClosureRecord, GoalSetting, ReverseFeedback
@@ -56,11 +55,11 @@ class ScopedAssignmentQueries:
             )
         return assignment
 
-    def get_goal_setting(self, viewer: Viewer, assignment_id: UUID) -> Optional[GoalSetting]:
+    def get_goal_setting(self, viewer: Viewer, assignment_id: UUID) -> GoalSetting | None:
         self.get_assignment(viewer, assignment_id)
         return self._repo.get_goal_setting(assignment_id)
 
-    def get_closure_record(self, viewer: Viewer, assignment_id: UUID) -> Optional[ClosureRecord]:
+    def get_closure_record(self, viewer: Viewer, assignment_id: UUID) -> ClosureRecord | None:
         self.get_assignment(viewer, assignment_id)
         return self._repo.get_closure_record(assignment_id)
 
@@ -71,7 +70,7 @@ class ScopedAssignmentQueries:
         return self._repo.list_reverse_feedback(assignment_id)
 
     def list_overdue_goal_setting(
-        self, viewer: Viewer, older_than_days: int, as_of: Optional[date] = None
+        self, viewer: Viewer, older_than_days: int, as_of: date | None = None
     ) -> list[Assignment]:
         if viewer.role == Role.AGENT:
             raise PermissionDenied("Agents may not query overdue goal-setting")
@@ -81,7 +80,7 @@ class ScopedAssignmentQueries:
         return [a for a in overdue if a.manager_id == viewer.party_id]
 
     def list_overdue_closure(
-        self, viewer: Viewer, older_than_days: Optional[int] = None, as_of: Optional[date] = None
+        self, viewer: Viewer, older_than_days: int | None = None, as_of: date | None = None
     ) -> list[Assignment]:
         if viewer.role == Role.AGENT:
             raise PermissionDenied("Agents may not query overdue closure")
@@ -95,8 +94,8 @@ class ScopedAssignmentQueries:
         viewer: Viewer,
         old_manager_id: UUID,
         new_manager_id: UUID,
-        notes: Optional[str] = None,
-        as_of: Optional[date] = None,
+        notes: str | None = None,
+        as_of: date | None = None,
     ) -> list[Assignment]:
         """Central-team-only: moving every one of a departing Manager's
         Agents is an organizational decision, not something a Manager
@@ -107,7 +106,7 @@ class ScopedAssignmentQueries:
             old_manager_id, new_manager_id, notes=notes, as_of=as_of
         )
 
-    def consolidated_score(self, viewer: Viewer, agent_id: UUID) -> Optional[float]:
+    def consolidated_score(self, viewer: Viewer, agent_id: UUID) -> float | None:
         """Average objective_score across every closed Assignment for one
         Agent. Functional Owner may query any Agent; an Agent may query
         only themselves; Managers do not get this view — their scope is

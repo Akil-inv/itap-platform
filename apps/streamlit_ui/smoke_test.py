@@ -8,10 +8,9 @@ import os
 
 os.environ["DATABASE_URL"] = "sqlite:///./smoke_test.db"
 
-from streamlit.testing.v1 import AppTest
-
 import test_fixtures
 from services import get_services
+from streamlit.testing.v1 import AppTest
 
 
 def click_button_labeled(at, label):

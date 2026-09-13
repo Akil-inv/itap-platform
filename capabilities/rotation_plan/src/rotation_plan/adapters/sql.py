@@ -6,7 +6,6 @@ rowcount distinguishes "no such row" from "row exists but version moved").
 """
 from __future__ import annotations
 
-from typing import Optional
 from uuid import UUID
 
 from sqlalchemy import (
@@ -18,8 +17,8 @@ from sqlalchemy import (
     MetaData,
     String,
     Table,
-    inspect,
     insert,
+    inspect,
     select,
     text,
     update,
@@ -61,7 +60,7 @@ rotation_enrollments_table = Table(
 )
 
 
-def _ensure_columns(engine: Engine, table: Table, backfill: Optional[dict] = None) -> None:
+def _ensure_columns(engine: Engine, table: Table, backfill: dict | None = None) -> None:
     """Additive-only schema patch for a table that already existed on disk
     before a column was added here — `metadata.create_all()` only creates
     missing *tables*, never missing *columns*. Same convention as
@@ -152,7 +151,7 @@ class SqlRotationPlanRepo:
 
     def get_enrollment_for_agent(
         self, agent_id: UUID, plan_id: UUID
-    ) -> Optional[Enrollment]:
+    ) -> Enrollment | None:
         with self._engine.connect() as conn:
             row = conn.execute(
                 select(rotation_enrollments_table).where(

@@ -1,27 +1,27 @@
 from __future__ import annotations
 
-from datetime import date
 from uuid import UUID
-
-import streamlit as st
-from assignment.domain import DuplicateAssignment
-from party_identity.domain import Party
-from rbac_scope import Viewer
 
 import bulk_import
 import journey_curve
 import org_tree
 import rotation_plan_bridge
-from catalog.domain import UploadKind
+import streamlit as st
+from assignment.clock import today as clock_today
+from assignment.domain import AssignmentNotFound, DuplicateAssignment
 from associate_status import AssociateStatus, classify, current_team_label
 from battery import render_html as render_battery_html
+from catalog.domain import UploadKind
 from party_helpers import disambiguate_labels, safe_get_name
+from party_identity.domain import Party, PartyNotFound
 from person_row import render_person_row
-from rotation_plan.domain import AlreadyEnrolled, RotationPlanNotFound
+from rbac_scope import Viewer
+from rotation_plan.domain import AlreadyEnrolled
+from tokens import TOKENS
+
 from views import approvals as approvals_view
 from views import associate_portfolio
 from views import setup as setup_view
-from tokens import TOKENS
 
 # Distinct marker colors for plotting several Associates on one shared
 # rotation-plan curve — reuses the same battery past-stint palette
@@ -38,7 +38,7 @@ def render(services, viewer: Viewer, current_party: Party) -> None:
     if selected_id is not None:
         try:
             agent = services.party_repo.get(UUID(selected_id))
-        except Exception:
+        except (ValueError, PartyNotFound):
             del st.session_state["selected_associate_id"]
             st.rerun()
             return
@@ -259,30 +259,28 @@ def _onboard_and_assign(services) -> None:
             "integration would match against — worth filling in now."
         )
         col1, col2 = st.columns(2)
-        with col1:
-            with st.form("new_agent"):
-                name = st.text_input("New Associate name")
-                email = st.text_input("Email (optional)", key="owner_agent_email")
-                submitted = st.form_submit_button("Create Associate")
-                if submitted and name:
-                    attrs = {"email": email} if email else {}
-                    services.party_repo.add(
-                        Party(party_type="agent", display_name=name, attributes=attrs)
-                    )
-                    st.success(f"Associate '{name}' created.")
-                    st.rerun()
-        with col2:
-            with st.form("new_manager"):
-                name = st.text_input("New Manager name", key="manager_name")
-                email = st.text_input("Email (optional)", key="owner_manager_email")
-                submitted = st.form_submit_button("Create Manager")
-                if submitted and name:
-                    attrs = {"email": email} if email else {}
-                    services.party_repo.add(
-                        Party(party_type="manager", display_name=name, attributes=attrs)
-                    )
-                    st.success(f"Manager '{name}' created.")
-                    st.rerun()
+        with col1, st.form("new_agent"):
+            name = st.text_input("New Associate name")
+            email = st.text_input("Email (optional)", key="owner_agent_email")
+            submitted = st.form_submit_button("Create Associate")
+            if submitted and name:
+                attrs = {"email": email} if email else {}
+                services.party_repo.add(
+                    Party(party_type="agent", display_name=name, attributes=attrs)
+                )
+                st.success(f"Associate '{name}' created.")
+                st.rerun()
+        with col2, st.form("new_manager"):
+            name = st.text_input("New Manager name", key="manager_name")
+            email = st.text_input("Email (optional)", key="owner_manager_email")
+            submitted = st.form_submit_button("Create Manager")
+            if submitted and name:
+                attrs = {"email": email} if email else {}
+                services.party_repo.add(
+                    Party(party_type="manager", display_name=name, attributes=attrs)
+                )
+                st.success(f"Manager '{name}' created.")
+                st.rerun()
 
     with st.container(border=True):
         st.markdown("**② Create an assignment**")
@@ -298,9 +296,9 @@ def _onboard_and_assign(services) -> None:
         with st.form("new_assignment"):
             agent_choice = st.selectbox("Associate", list(agent_labels.keys()))
             manager_choice = st.selectbox("Manager", list(manager_labels.keys()))
-            start = st.date_input("Start date", value=date.today())
+            start = st.date_input("Start date", value=clock_today())
             has_end = st.checkbox("Set an end date now")
-            end = st.date_input("End date", value=date.today()) if has_end else None
+            end = st.date_input("End date", value=clock_today()) if has_end else None
             submitted = st.form_submit_button("Create Assignment")
             if submitted:
                 try:
@@ -412,24 +410,23 @@ def _rotation_plans(services) -> None:
         "Assignment, created separately."
     )
 
-    with st.expander("Create a rotation plan"):
-        with st.form("new_rotation_plan"):
-            name = st.text_input("Plan name", placeholder="Engineering Foundations Track")
-            stages_raw = st.text_input(
-                "Stages, in order (semicolon-separated)",
-                placeholder="Platform Team; Data Team; Product Team",
-            )
-            weeks = st.number_input("Weeks per stage", min_value=1, value=8)
-            if st.form_submit_button("Create plan") and name and stages_raw:
-                stage_names = [s.strip() for s in stages_raw.split(";") if s.strip()]
-                try:
-                    services.rotation_plan_service.create_plan(
-                        name=name, stage_names=stage_names, weeks_per_stage=int(weeks)
-                    )
-                    st.success(f"'{name}' created.")
-                    st.rerun()
-                except ValueError as e:
-                    st.error(str(e))
+    with st.expander("Create a rotation plan"), st.form("new_rotation_plan"):
+        name = st.text_input("Plan name", placeholder="Engineering Foundations Track")
+        stages_raw = st.text_input(
+            "Stages, in order (semicolon-separated)",
+            placeholder="Platform Team; Data Team; Product Team",
+        )
+        weeks = st.number_input("Weeks per stage", min_value=1, value=8)
+        if st.form_submit_button("Create plan") and name and stages_raw:
+            stage_names = [s.strip() for s in stages_raw.split(";") if s.strip()]
+            try:
+                services.rotation_plan_service.create_plan(
+                    name=name, stage_names=stage_names, weeks_per_stage=int(weeks)
+                )
+                st.success(f"'{name}' created.")
+                st.rerun()
+            except ValueError as e:
+                st.error(str(e))
 
     plans = services.rotation_plan_repo.list_plans()
     if not plans:
@@ -535,7 +532,7 @@ def _rotation_plans(services) -> None:
                                 f"({linked_assignment.start_date} to "
                                 f"{linked_assignment.end_date or 'open'})"
                             )
-                        except Exception:
+                        except AssignmentNotFound:
                             linked_caption = "The linked Assignment no longer exists."
 
                     header = (
@@ -639,7 +636,10 @@ def _bulk_setup(services, current_party: Party) -> None:
     if st.session_state.get("bulk_import_cache_key") != cache_key:
         try:
             parsed = bulk_import.parse_workbook(uploaded)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — an untrusted-upload
+            # boundary: openpyxl can raise many different exception
+            # types for a malformed .xlsx, and any of them should show
+            # this friendly message rather than crash the page.
             st.error(f"Could not read this file: {e}")
             return
         st.session_state["bulk_import_cache_key"] = cache_key

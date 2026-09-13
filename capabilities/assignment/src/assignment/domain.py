@@ -10,7 +10,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from enum import Enum
-from typing import Optional
 from uuid import UUID, uuid4
 
 MIN_OBJECTIVE_SCORE = 0.0
@@ -75,11 +74,11 @@ class Assignment:
     manager_id: UUID
     start_date: date
     id: UUID = field(default_factory=uuid4)
-    end_date: Optional[date] = None
+    end_date: date | None = None
     state: AssignmentState = AssignmentState.ACTIVE
     kind: AssignmentKind = AssignmentKind.PRIMARY
-    closed_reason: Optional[str] = None
-    closure_note: Optional[str] = None
+    closed_reason: str | None = None
+    closure_note: str | None = None
     version: int = 0
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -121,8 +120,8 @@ class GoalSetting:
     criteria: list[str] = field(default_factory=list)
     set_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     frozen: bool = False
-    agreed_by: Optional[UUID] = None
-    agreed_at: Optional[datetime] = None
+    agreed_by: UUID | None = None
+    agreed_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -173,7 +172,7 @@ class ReviewScore:
     objective_score: float
     notes: str = ""
     id: UUID = field(default_factory=uuid4)
-    submitted_by: Optional[UUID] = None
+    submitted_by: UUID | None = None
     submitted_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     frozen: bool = True
 
@@ -224,12 +223,12 @@ class ChangeRequest:
     request_type: RequestType
     requested_by: UUID
     id: UUID = field(default_factory=uuid4)
-    new_end_date: Optional[date] = None
+    new_end_date: date | None = None
     notes: str = ""
     status: RequestStatus = RequestStatus.PENDING
     requested_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    decided_by: Optional[UUID] = None
-    decided_at: Optional[datetime] = None
+    decided_by: UUID | None = None
+    decided_at: datetime | None = None
 
 
 class GoalSettingFrozen(Exception):

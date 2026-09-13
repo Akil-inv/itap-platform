@@ -24,10 +24,8 @@ from __future__ import annotations
 import random
 from datetime import date, timedelta
 
-from openpyxl import Workbook
-from openpyxl.styles import Font
-
 from bulk_import import (
+    ADMIN_COLUMNS,
     ASSIGNMENT_COLUMNS,
     ASSOCIATE_COLUMNS,
     CCA_ACTIVITY_COLUMNS,
@@ -38,9 +36,10 @@ from bulk_import import (
     SHEET_CCA_ACTIVITIES,
     SHEET_MANAGERS,
     SHEET_SKILLS,
-    ADMIN_COLUMNS,
     SKILLS_COLUMNS,
 )
+from openpyxl import Workbook
+from openpyxl.styles import Font
 
 random.seed(42)  # deterministic demo data — same file every time it's generated
 

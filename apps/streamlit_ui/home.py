@@ -27,13 +27,12 @@ somewhere outside CML's own proxy entirely.
 """
 from __future__ import annotations
 
-import streamlit as st
-from party_identity.domain import Party
-from rbac_scope import Role
-
 import ad_auth
 import sso_auth
+import streamlit as st
 from party_helpers import disambiguate_labels
+from party_identity.domain import Party
+from rbac_scope import Role
 from role_labels import ROLE_DISPLAY_NAME
 from tokens import TOKENS
 
@@ -95,56 +94,55 @@ def render(services) -> None:
                 unsafe_allow_html=True,
             )
 
-    with card_col:
-        with st.container(border=True):
-            st.markdown(
-                '<div class="itap-login-wordmark">IT<span>AP</span></div>'
-                '<div class="itap-login-sub">Intern Training &amp; Assignment Platform</div>',
-                unsafe_allow_html=True,
-            )
-            st.divider()
+    with card_col, st.container(border=True):
+        st.markdown(
+            '<div class="itap-login-wordmark">IT<span>AP</span></div>'
+            '<div class="itap-login-sub">Intern Training &amp; Assignment Platform</div>',
+            unsafe_allow_html=True,
+        )
+        st.divider()
 
-            any_people = any(
-                services.party_repo.list_by_type(role.value) for role, *_ in ROLE_SECTIONS
-            )
+        any_people = any(
+            services.party_repo.list_by_type(role.value) for role, *_ in ROLE_SECTIONS
+        )
 
-            if any_people and ad_auth.is_configured():
-                _ad_login_form(services)
-            elif any_people:
-                _picker(services)
+        if any_people and ad_auth.is_configured():
+            _ad_login_form(services)
+        elif any_people:
+            _picker(services)
 
-            # Solves exactly one problem: a genuinely empty deployment has no
-            # one to click on this sign-in page, so there is no way in at
-            # all. This is deliberately Admin-only and deliberately only
-            # shown while no one exists yet — it is not a general "add
-            # anyone" convenience. Every other role comes from Bulk Setup
-            # (or the authenticated, admin-only Onboard & Assign back door),
-            # per docs/associate_journey_redesign.md's "no loose profiles"
-            # principle; a public, unauthenticated sign-in page has no
-            # business creating Managers or Associates. Shown regardless of
-            # AD config — nobody to authenticate against yet either way.
-            if not any_people:
-                st.info("No one is set up yet — add the first ITAP Admin below.")
-                with st.expander("Add the first ITAP Admin", expanded=True):
-                    st.caption(
-                        "Email is optional today, but is the field a future SSO "
-                        "integration would match against — worth filling in now. "
-                        "Once created, sign in as them and use Bulk Setup to "
-                        "bring in everyone else."
-                    )
-                    with st.form("home_new_admin"):
-                        name = st.text_input("Admin name", key="home_new_admin_name")
-                        email = st.text_input("Email (optional)", key="home_new_admin_email")
-                        if st.form_submit_button("Create ITAP Admin") and name:
-                            attrs = {"email": email} if email else {}
-                            services.party_repo.add(
-                                Party(
-                                    party_type="functional_owner",
-                                    display_name=name,
-                                    attributes=attrs,
-                                )
+        # Solves exactly one problem: a genuinely empty deployment has no
+        # one to click on this sign-in page, so there is no way in at
+        # all. This is deliberately Admin-only and deliberately only
+        # shown while no one exists yet — it is not a general "add
+        # anyone" convenience. Every other role comes from Bulk Setup
+        # (or the authenticated, admin-only Onboard & Assign back door),
+        # per docs/associate_journey_redesign.md's "no loose profiles"
+        # principle; a public, unauthenticated sign-in page has no
+        # business creating Managers or Associates. Shown regardless of
+        # AD config — nobody to authenticate against yet either way.
+        if not any_people:
+            st.info("No one is set up yet — add the first ITAP Admin below.")
+            with st.expander("Add the first ITAP Admin", expanded=True):
+                st.caption(
+                    "Email is optional today, but is the field a future SSO "
+                    "integration would match against — worth filling in now. "
+                    "Once created, sign in as them and use Bulk Setup to "
+                    "bring in everyone else."
+                )
+                with st.form("home_new_admin"):
+                    name = st.text_input("Admin name", key="home_new_admin_name")
+                    email = st.text_input("Email (optional)", key="home_new_admin_email")
+                    if st.form_submit_button("Create ITAP Admin") and name:
+                        attrs = {"email": email} if email else {}
+                        services.party_repo.add(
+                            Party(
+                                party_type="functional_owner",
+                                display_name=name,
+                                attributes=attrs,
                             )
-                            st.rerun()
+                        )
+                        st.rerun()
 
 
 def _picker(services) -> None:

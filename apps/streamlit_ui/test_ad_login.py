@@ -19,11 +19,10 @@ os.environ["DATABASE_URL"] = "sqlite:///./test_ad_login.db"
 # resolve to a real server.
 os.environ["AD_SERVER"] = "fake-dc.test"
 
-from streamlit.testing.v1 import AppTest
-
 import ad_auth
 from party_identity.domain import Party
 from services import get_services
+from streamlit.testing.v1 import AppTest
 
 services = get_services()
 admin = Party(

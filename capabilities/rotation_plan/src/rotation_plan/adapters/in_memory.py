@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Optional
 from uuid import UUID
 
 from ..domain import (
@@ -66,7 +65,7 @@ class InMemoryRotationPlanRepo:
 
     def get_enrollment_for_agent(
         self, agent_id: UUID, plan_id: UUID
-    ) -> Optional[Enrollment]:
+    ) -> Enrollment | None:
         for e in self._enrollments.values():
             if e.agent_id == agent_id and e.plan_id == plan_id:
                 return _copy_enrollment(e)

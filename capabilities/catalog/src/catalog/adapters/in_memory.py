@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Optional
 from uuid import UUID
 
 from ..domain import (
@@ -92,7 +91,7 @@ class InMemoryCatalogRepo:
         ]
 
     # -- Associate profile --
-    def get_profile(self, agent_id: UUID) -> Optional[AssociateProfile]:
+    def get_profile(self, agent_id: UUID) -> AssociateProfile | None:
         profile = self._profiles.get(agent_id)
         return _copy_profile(profile) if profile else None
 
@@ -113,7 +112,7 @@ class InMemoryCatalogRepo:
             replace(f) for f in self._interest_flags.values() if f.agent_id == agent_id
         ]
 
-    def get_interest_activity(self, agent_id: UUID) -> Optional[InterestActivity]:
+    def get_interest_activity(self, agent_id: UUID) -> InterestActivity | None:
         activity = self._interest_activity.get(agent_id)
         return replace(activity) if activity else None
 
@@ -125,7 +124,7 @@ class InMemoryCatalogRepo:
         self._leave[leave.id] = replace(leave)
 
     def list_leave(self, agent_id: UUID) -> list[AnnualLeave]:
-        return [replace(l) for l in self._leave.values() if l.agent_id == agent_id]
+        return [replace(leave) for leave in self._leave.values() if leave.agent_id == agent_id]
 
     # -- Upload audit log --
     def add_upload_audit(self, audit: UploadAudit) -> None:

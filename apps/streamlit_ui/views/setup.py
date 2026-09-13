@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import streamlit as st
 from catalog.domain import CcaStatus
-
 from party_helpers import disambiguate_labels
 
 

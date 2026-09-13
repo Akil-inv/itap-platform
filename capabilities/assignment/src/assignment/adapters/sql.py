@@ -18,7 +18,6 @@ transaction.
 from __future__ import annotations
 
 from datetime import date
-from typing import Optional
 from uuid import UUID
 
 from sqlalchemy import (
@@ -34,8 +33,8 @@ from sqlalchemy import (
     String,
     Table,
     Text,
-    inspect,
     insert,
+    inspect,
     select,
     text,
     update,
@@ -136,7 +135,7 @@ reverse_feedback_table = Table(
 )
 
 
-def _ensure_columns(engine: Engine, table: Table, backfill: Optional[dict] = None) -> None:
+def _ensure_columns(engine: Engine, table: Table, backfill: dict | None = None) -> None:
     """Additive-only schema patch for tables that already existed on disk
     before a column was added to this module's table definitions.
 
@@ -258,7 +257,7 @@ class SqlAssignmentRepo:
         return [_row_to_assignment(r) for r in rows]
 
     def list_active_without_goal_setting(
-        self, older_than_days: int, as_of: Optional[date] = None
+        self, older_than_days: int, as_of: date | None = None
     ) -> list[Assignment]:
         as_of = as_of or today()
         with self._engine.connect() as conn:
@@ -281,7 +280,7 @@ class SqlAssignmentRepo:
         return result
 
     def list_active_older_than(
-        self, older_than_days: int, as_of: Optional[date] = None
+        self, older_than_days: int, as_of: date | None = None
     ) -> list[Assignment]:
         as_of = as_of or today()
         with self._engine.connect() as conn:
@@ -310,7 +309,7 @@ class SqlAssignmentRepo:
                 .values(**_goal_setting_values(goal_setting, include_id=False))
             )
 
-    def get_goal_setting(self, assignment_id: UUID) -> Optional[GoalSetting]:
+    def get_goal_setting(self, assignment_id: UUID) -> GoalSetting | None:
         with self._engine.connect() as conn:
             row = conn.execute(
                 select(goal_settings_table).where(
@@ -321,7 +320,7 @@ class SqlAssignmentRepo:
             return None
         return _row_to_goal_setting(row)
 
-    def get_closure_record(self, assignment_id: UUID) -> Optional[ClosureRecord]:
+    def get_closure_record(self, assignment_id: UUID) -> ClosureRecord | None:
         with self._engine.connect() as conn:
             row = conn.execute(
                 select(closure_records_table).where(
@@ -352,7 +351,7 @@ class SqlAssignmentRepo:
                 .values(**_review_score_values(review_score, include_id=False))
             )
 
-    def get_review_score(self, assignment_id: UUID) -> Optional[ReviewScore]:
+    def get_review_score(self, assignment_id: UUID) -> ReviewScore | None:
         with self._engine.connect() as conn:
             row = conn.execute(
                 select(review_scores_table).where(
@@ -377,7 +376,7 @@ class SqlAssignmentRepo:
                 .values(**_change_request_values(request, include_id=False))
             )
 
-    def get_change_request(self, request_id: UUID) -> Optional[ChangeRequest]:
+    def get_change_request(self, request_id: UUID) -> ChangeRequest | None:
         with self._engine.connect() as conn:
             row = conn.execute(
                 select(change_requests_table).where(

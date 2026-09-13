@@ -6,7 +6,7 @@ separate repos would add indirection without a present need.
 from __future__ import annotations
 
 from datetime import date
-from typing import Optional, Protocol
+from typing import Protocol
 from uuid import UUID
 
 from .domain import (
@@ -51,7 +51,7 @@ class AssignmentRepo(Protocol):
     def list_by_manager(self, manager_id: UUID) -> list[Assignment]: ...
 
     def list_active_without_goal_setting(
-        self, older_than_days: int, as_of: Optional[date] = None
+        self, older_than_days: int, as_of: date | None = None
     ) -> list[Assignment]:
         """Assignments still ACTIVE, started more than `older_than_days`
         ago, with no GoalSetting recorded — the feed a reminder job would
@@ -59,7 +59,7 @@ class AssignmentRepo(Protocol):
         ...
 
     def list_active_older_than(
-        self, older_than_days: int, as_of: Optional[date] = None
+        self, older_than_days: int, as_of: date | None = None
     ) -> list[Assignment]:
         """Every Assignment still ACTIVE, started more than
         `older_than_days` ago — regardless of goal-setting status. Used
@@ -76,9 +76,9 @@ class AssignmentRepo(Protocol):
         pre-freeze text edit and the freeze/reopen actions themselves."""
         ...
 
-    def get_goal_setting(self, assignment_id: UUID) -> Optional[GoalSetting]: ...
+    def get_goal_setting(self, assignment_id: UUID) -> GoalSetting | None: ...
 
-    def get_closure_record(self, assignment_id: UUID) -> Optional[ClosureRecord]: ...
+    def get_closure_record(self, assignment_id: UUID) -> ClosureRecord | None: ...
 
     def add_reverse_feedback(self, feedback: ReverseFeedback) -> None: ...
 
@@ -93,7 +93,7 @@ class AssignmentRepo(Protocol):
         an admin reopen, or the reopen itself clearing `frozen`)."""
         ...
 
-    def get_review_score(self, assignment_id: UUID) -> Optional[ReviewScore]: ...
+    def get_review_score(self, assignment_id: UUID) -> ReviewScore | None: ...
 
     # -- Extension/Closure requests (Phase 3) --
 
@@ -101,7 +101,7 @@ class AssignmentRepo(Protocol):
 
     def update_change_request(self, request: ChangeRequest) -> None: ...
 
-    def get_change_request(self, request_id: UUID) -> Optional[ChangeRequest]: ...
+    def get_change_request(self, request_id: UUID) -> ChangeRequest | None: ...
 
     def list_change_requests(self, assignment_id: UUID) -> list[ChangeRequest]: ...
 

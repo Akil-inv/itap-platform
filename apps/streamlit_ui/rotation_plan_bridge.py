@@ -21,13 +21,13 @@ from __future__ import annotations
 from uuid import UUID
 
 from assignment.clock import today
-from assignment.domain import DuplicateAssignment
+from assignment.domain import AssignmentNotFound, DuplicateAssignment
 
 
 def advance_linked_stage_if_closed(services, assignment_id: UUID) -> None:
     try:
         assignment = services.assignment_repo.get(assignment_id)
-    except Exception:
+    except AssignmentNotFound:
         return
 
     enrollments = services.rotation_plan_repo.list_enrollments_for_agent(assignment.agent_id)
@@ -60,5 +60,8 @@ def advance_linked_stage_if_closed(services, assignment_id: UUID) -> None:
             services.rotation_plan_service.advance_stage(
                 enrollment.id, assignment_id=new_assignment_id
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 — deliberate: see module docstring,
+            # "Failures here are swallowed rather than raised". This
+            # convenience side effect must never turn a successful
+            # Assignment closure into a visible error.
             return

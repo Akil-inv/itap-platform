@@ -30,8 +30,6 @@ import os
 import shutil
 import sys
 
-from sqlalchemy import create_engine
-
 from assignment.adapters.sql import create_schema as create_assignment_schema
 from assignment.adapters.sql import metadata as assignment_metadata
 from catalog.adapters.sql import create_schema as create_catalog_schema
@@ -40,6 +38,7 @@ from party_identity.adapters.sql import create_schema as create_party_schema
 from party_identity.adapters.sql import metadata as party_metadata
 from rotation_plan.adapters.sql import create_schema as create_rotation_plan_schema
 from rotation_plan.adapters.sql import metadata as rotation_plan_metadata
+from sqlalchemy import create_engine
 
 
 def reset(database_url: str) -> None:

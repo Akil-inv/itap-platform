@@ -48,7 +48,6 @@ front of it, it doesn't remove the fallback.
 from __future__ import annotations
 
 import os
-from typing import Optional
 
 import streamlit as st
 from party_identity.domain import Party
@@ -59,20 +58,22 @@ SSO_HEADER_NAME = os.environ.get("SSO_HEADER_NAME", "Remote-User")
 _PARTY_TYPES = ("functional_owner", "manager", "agent")
 
 
-def get_sso_identity() -> Optional[str]:
+def get_sso_identity() -> str | None:
     """The signed-in identity CML's proxy asserts for this request, or
     None if the header is absent (no proxy in front, or SSO passthrough
     isn't enabled for this workspace)."""
     try:
         headers = st.context.headers
-    except Exception:
+    except Exception:  # noqa: BLE001 — st.context.headers is undocumented
+        # to fail this way, but if it ever does, this must degrade to
+        # "no SSO identity" rather than crash every page in the app.
         return None
     value = headers.get(SSO_HEADER_NAME)
     value = value.strip() if value else None
     return value or None
 
 
-def find_party_by_sso_identity(party_repo: PartyRepo, identity: str) -> Optional[Party]:
+def find_party_by_sso_identity(party_repo: PartyRepo, identity: str) -> Party | None:
     """Matches the SSO identity against every onboarded Party's
     `attributes["email"]`, case-insensitively — the same natural-key
     field `bulk_import.py` already uses to match/update people on

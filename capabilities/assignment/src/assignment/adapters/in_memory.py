@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import date
-from typing import Optional
 from uuid import UUID
 
 from ..clock import today
@@ -70,7 +69,7 @@ class InMemoryAssignmentRepo:
         return [replace(a) for a in self._assignments.values() if a.manager_id == manager_id]
 
     def list_active_without_goal_setting(
-        self, older_than_days: int, as_of: Optional[date] = None
+        self, older_than_days: int, as_of: date | None = None
     ) -> list[Assignment]:
         as_of = as_of or today()
         result = []
@@ -84,7 +83,7 @@ class InMemoryAssignmentRepo:
         return result
 
     def list_active_older_than(
-        self, older_than_days: int, as_of: Optional[date] = None
+        self, older_than_days: int, as_of: date | None = None
     ) -> list[Assignment]:
         as_of = as_of or today()
         return [
@@ -100,10 +99,10 @@ class InMemoryAssignmentRepo:
     def update_goal_setting(self, goal_setting: GoalSetting) -> None:
         self._goal_settings[goal_setting.assignment_id] = goal_setting
 
-    def get_goal_setting(self, assignment_id: UUID) -> Optional[GoalSetting]:
+    def get_goal_setting(self, assignment_id: UUID) -> GoalSetting | None:
         return self._goal_settings.get(assignment_id)
 
-    def get_closure_record(self, assignment_id: UUID) -> Optional[ClosureRecord]:
+    def get_closure_record(self, assignment_id: UUID) -> ClosureRecord | None:
         return self._closure_records.get(assignment_id)
 
     def add_reverse_feedback(self, feedback: ReverseFeedback) -> None:
@@ -120,7 +119,7 @@ class InMemoryAssignmentRepo:
     def update_review_score(self, review_score: ReviewScore) -> None:
         self._review_scores[review_score.assignment_id] = review_score
 
-    def get_review_score(self, assignment_id: UUID) -> Optional[ReviewScore]:
+    def get_review_score(self, assignment_id: UUID) -> ReviewScore | None:
         return self._review_scores.get(assignment_id)
 
     # -- Extension/Closure requests (Phase 3) --
@@ -131,7 +130,7 @@ class InMemoryAssignmentRepo:
     def update_change_request(self, request: ChangeRequest) -> None:
         self._change_requests[request.id] = request
 
-    def get_change_request(self, request_id: UUID) -> Optional[ChangeRequest]:
+    def get_change_request(self, request_id: UUID) -> ChangeRequest | None:
         return self._change_requests.get(request_id)
 
     def list_change_requests(self, assignment_id: UUID) -> list[ChangeRequest]:

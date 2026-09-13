@@ -21,19 +21,18 @@ the persistent header's identity chip, not as the page's identity.
 from __future__ import annotations
 
 import os
-from datetime import date
 from uuid import UUID
-
-import streamlit as st
-from rbac_scope import Role, Viewer
 
 import generate_demo_workbook
 import home
 import sso_auth
+import streamlit as st
 import theme
 import user_manual
-from services import get_services
+from party_identity.domain import PartyNotFound
+from rbac_scope import Role, Viewer
 from role_labels import ROLE_DISPLAY_NAME
+from services import get_services
 from views import agent as agent_view
 from views import functional_owner as owner_view
 from views import manager as manager_view
@@ -131,7 +130,7 @@ DEV_MODE = (
 
 try:
     current_party = party_repo.get(UUID(viewer_party_id))
-except Exception:
+except (ValueError, PartyNotFound):
     del st.session_state["viewer_party_id"]
     st.rerun()
 
@@ -155,9 +154,8 @@ with header_left:
         f"({ROLE_DISPLAY_NAME[viewer.role]})</div>",
         unsafe_allow_html=True,
     )
-with header_manual:
-    with st.popover("📖 User Manual", width='stretch'):
-        user_manual.render(viewer.role)
+with header_manual, st.popover("📖 User Manual", width='stretch'):
+    user_manual.render(viewer.role)
 with header_switch:
     if DEV_MODE and st.button("Switch person", width='stretch'):
         del st.session_state["viewer_party_id"]

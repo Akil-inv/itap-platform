@@ -11,13 +11,13 @@ from .domain import (
 from .service import RotationPlanService
 
 __all__ = [
-    "RotationPlan",
-    "Enrollment",
-    "RotationPlanService",
-    "RotationPlanNotFound",
-    "EnrollmentNotFound",
     "AlreadyEnrolled",
-    "NoNextStage",
-    "StageIndexOutOfRange",
     "ConcurrentModification",
+    "Enrollment",
+    "EnrollmentNotFound",
+    "NoNextStage",
+    "RotationPlan",
+    "RotationPlanNotFound",
+    "RotationPlanService",
+    "StageIndexOutOfRange",
 ]

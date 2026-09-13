@@ -4,8 +4,11 @@ logic itself). Run directly: `python test_bulk_import.py`.
 """
 import io
 import os
+import shutil
 import zipfile
 from datetime import date
+
+import openpyxl
 
 os.environ["DATABASE_URL"] = "sqlite:///./test_bulk_import.db"
 os.environ["PHOTO_STORAGE_DIR"] = "./test_bulk_import_photos"
@@ -65,8 +68,6 @@ assert parsed.cca_activities[1]["status"].value == "closed"
 print("Template round-trip: OK")
 
 # --- missing sheet / missing column detection ---
-
-import openpyxl
 
 wb = openpyxl.Workbook()
 wb.remove(wb.active)
@@ -230,7 +231,5 @@ assert os.path.exists(casey_profile_with_photo.photo_url)
 print("photos.zip matched by email and stored: OK")
 
 os.remove("test_bulk_import.db")
-import shutil
-
 shutil.rmtree("test_bulk_import_photos", ignore_errors=True)
 print("ALL BULK IMPORT TESTS PASSED")

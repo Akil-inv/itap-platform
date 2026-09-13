@@ -23,6 +23,8 @@ __all__ = [
     "AnnualLeave",
     "AssociateProfile",
     "AssociateSkill",
+    "CatalogRepo",
+    "CatalogService",
     "CcaActivity",
     "CcaActivityNotFound",
     "CcaStatus",
@@ -36,6 +38,4 @@ __all__ = [
     "SkillSource",
     "Team",
     "TeamNotFound",
-    "CatalogRepo",
-    "CatalogService",
 ]

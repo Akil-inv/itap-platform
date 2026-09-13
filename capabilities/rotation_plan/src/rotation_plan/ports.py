@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional, Protocol
+from typing import Protocol
 from uuid import UUID
 
 from .domain import Enrollment, RotationPlan
@@ -25,7 +25,7 @@ class RotationPlanRepo(Protocol):
 
     def get_enrollment_for_agent(
         self, agent_id: UUID, plan_id: UUID
-    ) -> Optional[Enrollment]: ...
+    ) -> Enrollment | None: ...
 
     def list_enrollments_for_plan(self, plan_id: UUID) -> list[Enrollment]: ...
 

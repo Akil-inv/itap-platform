@@ -38,10 +38,13 @@ is nowhere else for the associate to go — everything here is their own):
 """
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import timedelta
 
+import journey_curve
+import photo_storage
 import streamlit as st
-from assignment.domain import GoalSettingFrozen
+from assignment.clock import today as clock_today
+from assignment.domain import AssignmentNotFound, GoalSettingFrozen
 from assignment.rules import TransitionDenied
 from catalog.domain import (
     AssociateProfile,
@@ -50,14 +53,11 @@ from catalog.domain import (
     ProjectHighlight,
     SkillSource,
 )
-from party_identity.domain import Party
-from rbac_scope import Viewer
-
-import journey_curve
-import photo_storage
 from journey import render_stepper, stage_index
 from party_helpers import safe_get_name
+from party_identity.domain import Party
 from person_row import avatar_html
+from rbac_scope import Viewer
 
 
 def render(services, viewer: Viewer, current_party: Party) -> None:
@@ -133,17 +133,16 @@ def _profile_tab(services, current_party: Party) -> None:
                 st.caption(e.description)
     else:
         st.caption("No prior experience entries yet.")
-    with st.expander("Add an experience entry"):
-        with st.form("agent_add_experience"):
-            title = st.text_input("Title", key="agent_exp_title")
-            description = st.text_area("Description", key="agent_exp_desc")
-            if st.form_submit_button("Add") and title:
-                base = profile or AssociateProfile(agent_id=current_party.id)
-                base.experience = list(base.experience) + [
-                    ExperienceEntry(title=title, description=description)
-                ]
-                services.catalog_service.update_profile(base)
-                st.rerun()
+    with st.expander("Add an experience entry"), st.form("agent_add_experience"):
+        title = st.text_input("Title", key="agent_exp_title")
+        description = st.text_area("Description", key="agent_exp_desc")
+        if st.form_submit_button("Add") and title:
+            base = profile or AssociateProfile(agent_id=current_party.id)
+            base.experience = list(base.experience) + [
+                ExperienceEntry(title=title, description=description)
+            ]
+            services.catalog_service.update_profile(base)
+            st.rerun()
 
     st.subheader("Project highlights")
     if profile and profile.project_highlights:
@@ -151,17 +150,16 @@ def _profile_tab(services, current_party: Party) -> None:
             st.markdown(f"- **{h.title}**" + (f" — {h.description}" if h.description else ""))
     else:
         st.caption("No project highlights yet.")
-    with st.expander("Add a project highlight"):
-        with st.form("agent_add_highlight"):
-            title = st.text_input("Title", key="agent_hl_title")
-            description = st.text_area("Description", key="agent_hl_desc")
-            if st.form_submit_button("Add") and title:
-                base = profile or AssociateProfile(agent_id=current_party.id)
-                base.project_highlights = list(base.project_highlights) + [
-                    ProjectHighlight(title=title, description=description)
-                ]
-                services.catalog_service.update_profile(base)
-                st.rerun()
+    with st.expander("Add a project highlight"), st.form("agent_add_highlight"):
+        title = st.text_input("Title", key="agent_hl_title")
+        description = st.text_area("Description", key="agent_hl_desc")
+        if st.form_submit_button("Add") and title:
+            base = profile or AssociateProfile(agent_id=current_party.id)
+            base.project_highlights = list(base.project_highlights) + [
+                ProjectHighlight(title=title, description=description)
+            ]
+            services.catalog_service.update_profile(base)
+            st.rerun()
 
     st.subheader("Skills")
     st.caption(
@@ -228,7 +226,7 @@ def _rotation_plan_progress(services, current_party: Party) -> None:
             try:
                 linked_assignment = services.assignment_repo.get(assignment_id)
                 stage_subs.append(safe_get_name(services.party_repo, linked_assignment.manager_id))
-            except Exception:
+            except AssignmentNotFound:
                 stage_subs.append(None)
 
         with st.container(border=True):
@@ -441,8 +439,8 @@ def _annual_leave_section(services, current_party: Party) -> None:
 
     with st.form("agent_declare_leave"):
         cols = st.columns(2)
-        start = cols[0].date_input("Start date", value=date.today())
-        end = cols[1].date_input("End date", value=date.today() + timedelta(days=1))
+        start = cols[0].date_input("Start date", value=clock_today())
+        end = cols[1].date_input("End date", value=clock_today() + timedelta(days=1))
         note = st.text_input("Note (optional)")
         if st.form_submit_button("Declare leave"):
             try:

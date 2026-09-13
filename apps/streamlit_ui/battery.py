@@ -29,9 +29,9 @@ from __future__ import annotations
 import html
 import math
 from datetime import date, timedelta
-from typing import Optional
 from uuid import UUID
 
+from assignment.clock import today as clock_today
 from assignment.domain import Assignment, AssignmentKind
 from party_helpers import safe_get_name
 from party_identity.ports import PartyRepo
@@ -55,12 +55,12 @@ def primary_assignments(all_assignments: list[Assignment]) -> list[Assignment]:
     )
 
 
-def current_primary(primaries: list[Assignment]) -> Optional[Assignment]:
+def current_primary(primaries: list[Assignment]) -> Assignment | None:
     active = [a for a in primaries if a.state.value == "active"]
     return active[-1] if active else None
 
 
-def _covering_stint(mid: date, primaries: list[Assignment], today: date) -> Optional[Assignment]:
+def _covering_stint(mid: date, primaries: list[Assignment], today: date) -> Assignment | None:
     for p in primaries:
         p_end = p.end_date or today
         if p.start_date <= mid <= p_end:
@@ -68,17 +68,17 @@ def _covering_stint(mid: date, primaries: list[Assignment], today: date) -> Opti
     return None
 
 
-def build_segments(primaries: list[Assignment], today: Optional[date] = None) -> list[Optional[Assignment]]:
+def build_segments(primaries: list[Assignment], today: date | None = None) -> list[Assignment | None]:
     """One entry per 3-month segment from the earliest Primary's start
     date through today: the Assignment covering that segment's midpoint,
     or None for a gap (no Primary active)."""
     if not primaries:
         return []
-    today = today or date.today()
+    today = today or clock_today()
     earliest = primaries[0].start_date
     total_days = max((today - earliest).days, 1)
     n_segments = max(1, math.ceil(total_days / SEGMENT_DAYS))
-    segments: list[Optional[Assignment]] = []
+    segments: list[Assignment | None] = []
     for i in range(n_segments):
         seg_start = earliest + timedelta(days=i * SEGMENT_DAYS)
         seg_end = min(earliest + timedelta(days=(i + 1) * SEGMENT_DAYS), today)
@@ -108,8 +108,8 @@ def _segment_bounds(primaries: list[Assignment], today: date) -> list[tuple[date
 
 def render_html(
     all_assignments: list[Assignment],
-    party_repo: Optional[PartyRepo] = None,
-    today: Optional[date] = None,
+    party_repo: PartyRepo | None = None,
+    today: date | None = None,
 ) -> str:
     """Renders the battery bar as an HTML fragment — a track/capsule
     ("meter") containing one colored segment per 3-month period, each
@@ -130,7 +130,7 @@ def render_html(
     primaries = primary_assignments(all_assignments)
     if not primaries:
         return ""
-    today = today or date.today()
+    today = today or clock_today()
     segments = build_segments(primaries, today)
     bounds = _segment_bounds(primaries, today)
     current = current_primary(primaries)

@@ -10,10 +10,8 @@ from __future__ import annotations
 
 import html
 from dataclasses import dataclass
-from typing import Optional
 
 import streamlit as st
-
 from tokens import TOKENS
 
 # Rendered inside an isolated st.iframe document (no access to the page's
@@ -143,9 +141,9 @@ class _Curve:
 
 def render(
     stage_names: list[str],
-    stage_subs: Optional[list[str]] = None,
-    progress: Optional[float] = None,
-    markers: Optional[list[dict]] = None,
+    stage_subs: list[str] | None = None,
+    progress: float | None = None,
+    markers: list[dict] | None = None,
     height: int = 260,
 ) -> None:
     """Render the curve. Pass `progress` (a float 0..len(stages)-1, e.g.

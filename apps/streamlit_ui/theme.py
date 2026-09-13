@@ -22,7 +22,6 @@ and its commit message) — no dark-mode variant, no toggle.
 from __future__ import annotations
 
 import streamlit as st
-
 from tokens import TOKENS
 
 _FONTS = (
