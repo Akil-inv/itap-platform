@@ -12,3 +12,4 @@ build/
 workspace/scratch/
 apps/streamlit_ui/offline_deploy/wheelhouse/
 apps/streamlit_ui/offline_deploy/requirements.txt
+apps/streamlit_ui/_manual_screens/
