@@ -106,6 +106,41 @@ distro's equivalent) directly — either sidesteps this section
 entirely. Point `PG_BIN_DIR` at wherever those binaries live instead
 of `pg_bundle/bin`.
 
+## CML container sizing (embedded mode)
+
+Recommended: **4 vCPU / 4 GB RAM / 5 GB disk** for the single CML
+Application running Streamlit + embedded Postgres together (this is
+the deployment mode actually built and verified this session).
+
+This is deliberately sized above the bare component estimate below —
+2 vCPU would likely be enough day-to-day, but the extra headroom is
+cheap insurance against CPU being the thing that causes a slow page
+load or a stalled bulk import during a real multi-Manager scoring
+window, which is a worse failure mode to debug live than "we
+over-provisioned a bit":
+
+| | CPU | Memory | Disk |
+|---|---|---|---|
+| Streamlit + Python | ~0.5–1 vCPU | 300–500 MB (up to ~1 GB during bulk import) | ~500 MB–1 GB (venv) |
+| Postgres | ~0.5–1 vCPU | 300–600 MB | <1 GB (data) + ~20 MB (bundle) |
+| OS/container overhead | shared | 200–400 MB | rest |
+| **Headroom (this recommendation)** | **4 vCPU** | **4 GB** | **5 GB** |
+
+Concurrency this comfortably covers: an internal, form-based tool like
+this sees sparse "concurrently active" load (occasional submissions,
+not sustained polling) — dozens of concurrently connected users is not
+a stretch on this sizing, verified so far only at the database layer
+(30 simultaneous writers, zero errors in this session's stress test).
+The Streamlit-web-server layer itself (many browser sessions clicking
+at once) hasn't been load-tested against real CML hardware — if actual
+peak headcount is large and bursty (e.g. everyone submitting scores in
+the same hour before a deadline), test that specifically against a
+staging deployment before relying on this number.
+
+If you later split to the **standalone** two-Application shape, roughly:
+Streamlit ~1 vCPU / 2 GB / 2 GB, Postgres ~1 vCPU / 2 GB / 3 GB —
+adjust similarly with headroom if going that route.
+
 ## Env vars (all scripts)
 
 | Var | Required | Default | Notes |
