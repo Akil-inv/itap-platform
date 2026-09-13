@@ -80,14 +80,41 @@ CC=musl-gcc ./configure \
 PLACEHOLDER="/PGBUNDLEINTERP$(printf 'X%.0s' $(seq 1 200))"
 echo "LDFLAGS += -Wl,--dynamic-linker=$PLACEHOLDER" >> src/Makefile.global
 
+# RPATH doesn't have the interpreter's "must be a real absolute path"
+# restriction -- $ORIGIN is expanded by the dynamic loader at load
+# time relative to the running binary's own location, so this one
+# doesn't need the placeholder-and-patch dance. Without this, the
+# default RPATH bakes in this build's own $PREFIX/lib (a throwaway
+# tempdir here, and no better than that even with --prefix=/somewhere
+# permanent) -- every binary would fail to find libpq.so.5 the moment
+# the bundle is copied anywhere else, which is always. Two escaping
+# layers needed: `$$` so make's own expansion emits a literal `$`, and
+# `\$` so the /bin/sh that make invokes to run the actual link command
+# doesn't ALSO try to expand it (as an unset env var, to nothing) --
+# confirmed by readelf on the first attempt without the backslash,
+# which produced a RUNPATH of plain "/../lib".
+echo 'LDFLAGS += -Wl,-rpath,\$$ORIGIN/../lib' >> src/Makefile.global
+
 echo "== Building (pg_upgrade is expected to fail — needs linux/fs.h,"
 echo "   which musl doesn't ship, and nothing here needs pg_upgrade) =="
-make -k -j"$(nproc)"
+# -k so this one expected failure doesn't stop the rest of the build;
+# `|| true` so it doesn't trip `set -e` either, since make's own exit
+# code still reflects that failure even with -k.
+make -k -j"$(nproc)" || true
+if ! [ -x src/backend/postgres ]; then
+  echo "postgres backend failed to build — this is NOT the expected" >&2
+  echo "pg_upgrade-only failure. Check the build log above." >&2
+  exit 1
+fi
 
 echo "== Relinking zic with a working interpreter =="
 echo "   (a BUILD-time-only tool that must actually run during install"
 echo "   to generate timezone data — never shipped in pg_bundle/bin) =="
 sed -i 's|^LDFLAGS += -Wl,--dynamic-linker=/PGBUNDLEINTERP|#&|' src/Makefile.global
+# zic.o itself didn't change, so plain `make zic` would see nothing to
+# do and leave the STALE, placeholder-linked binary in place -- force
+# the link step to actually re-run.
+rm -f src/timezone/zic
 make -C src/timezone zic
 sed -i 's|^#\(LDFLAGS += -Wl,--dynamic-linker=/PGBUNDLEINTERP\)|\1|' src/Makefile.global
 
