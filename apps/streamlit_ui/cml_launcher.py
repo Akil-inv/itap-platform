@@ -31,8 +31,30 @@ covers "extracted zip into an extra folder," which is the actual
 failure mode this hit, without an expensive deep/recursive search
 (the project directory can contain 100MB+ of wheelhouse files, which a
 recursive glob would waste time walking through).
+
+Subprocess, not exec: this launches streamlit as a genuine CHILD
+process and blocks waiting on it -- it does NOT use os.execvp() to
+replace the current process image, even though that looks like the
+more obvious choice for "become streamlit." The reason: CML runs this
+Script inside a real Jupyter kernel process, which CML's kernel
+gateway monitors via a heartbeat (this is the same mechanism behind
+the __file__ NameError above -- "Cell In[1]" is literally a Jupyter
+cell). os.execvp() replaces that entire process image with streamlit,
+which means the kernel process the gateway is monitoring simply
+vanishes the instant it succeeds. The gateway sees the heartbeat die,
+restarts a fresh kernel, which re-runs this script, which execs into
+streamlit again, killing that kernel too -- an infinite silent
+crash-loop ("Kernel Restarted... restarting kernel (N/5)" in Container
+Logs, with NOTHING in Application Logs, because execvp succeeding is
+exactly the problem; there's no Python exception to catch or log).
+Running streamlit as a child subprocess instead keeps the original
+kernel process --  and its heartbeat -- alive for as long as this
+script blocks on the child, which is indefinitely (streamlit itself
+doesn't exit under normal operation).
 """
 import os
+import subprocess
+import sys
 
 port = os.environ["CDSW_APP_PORT"]
 cwd = os.getcwd()
@@ -55,8 +77,7 @@ if app_path is None:
         f"cml_launcher.py's search to match."
     )
 
-os.execvp(
-    "streamlit",
+result = subprocess.run(
     [
         "streamlit",
         "run",
@@ -73,3 +94,4 @@ os.execvp(
         "false",
     ],
 )
+sys.exit(result.returncode)
