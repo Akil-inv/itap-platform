@@ -115,7 +115,8 @@ if sso_identity:
             if owners:
                 st.write("Functional Owner / Admin accounts already exist:")
                 for o in owners:
-                    st.write(f"- {o.display_name} ({o.email})")
+                    o_email = o.attributes.get("email", "(no email set)")
+                    st.write(f"- {o.display_name} ({o_email})")
                 st.caption(
                     "One of these can onboard your identity through "
                     "Workforce Overview → Bulk Setup."
