@@ -18,19 +18,24 @@ script.py` process -- it executes the file's contents in a cell-like
 context (visible as "Cell In[1], line N" in a CML traceback), where
 `__file__` is simply undefined and raises NameError.
 
-It also does NOT hardcode "apps/streamlit_ui/app.py" relative to the
-working directory -- an earlier version of this file did, and broke
-the moment the extracted zip/tar landed in a named subfolder (e.g.
-/home/cdsw/itap-platform-offline-deps/apps/streamlit_ui/app.py) rather
-than directly under the project root, since that's exactly what a
-plain "unzip" leaves you with (the zip's top-level folder is whatever
-GitHub named the archive, not "apps"). Instead this searches: the
-working directory itself, then each of its immediate subdirectories,
-for an "apps/streamlit_ui/app.py" suffix -- one level of nesting
-covers "extracted zip into an extra folder," which is the actual
-failure mode this hit, without an expensive deep/recursive search
-(the project directory can contain 100MB+ of wheelhouse files, which a
-recursive glob would waste time walking through).
+It also does NOT hardcode any single relative path to app.py -- CML's
+actual working directory for a Script turned out to move around across
+attempts on the same real deployment: first confirmed as the project
+root itself (/home/cdsw, with code one level below at
+itap-platform/apps/streamlit_ui/app.py), then later observed to be
+somewhere with the itap-platform folder one level ABOVE the working
+directory instead (e.g. cwd already inside itap-platform, or inside
+apps/streamlit_ui itself) -- rather than keep guessing a single fixed
+layout, this checks a small, fixed set of candidate roots relative to
+cwd covering every layout actually seen: cwd itself (covers "cwd IS
+apps/streamlit_ui", i.e. app.py is directly "app.py"), cwd's immediate
+subdirectories (covers "extracted zip into a named subfolder directly
+under cwd"), and cwd's parent and grandparent (covers "cwd is already
+one or two levels inside the project root"). Each candidate root is
+checked for both "app.py" directly and "apps/streamlit_ui/app.py"
+under it. This stays cheap -- a handful of specific path checks plus
+one shallow os.listdir(cwd), no recursive walk into the 100MB+
+wheelhouse tree.
 
 Subprocess, not exec: this launches streamlit as a genuine CHILD
 process and blocks waiting on it -- it does NOT use os.execvp() to
@@ -58,23 +63,28 @@ import sys
 
 port = os.environ["CDSW_APP_PORT"]
 cwd = os.getcwd()
+parent = os.path.dirname(cwd)
+grandparent = os.path.dirname(parent)
 
-REL_APP_PATH = os.path.join("apps", "streamlit_ui", "app.py")
-
-candidates = [REL_APP_PATH]
+roots = [cwd, parent, grandparent]
 for name in sorted(os.listdir(cwd)):
     full = os.path.join(cwd, name)
     if os.path.isdir(full):
-        candidates.append(os.path.join(name, REL_APP_PATH))
+        roots.append(full)
+
+candidates = []
+for root in roots:
+    candidates.append(os.path.join(root, "app.py"))
+    candidates.append(os.path.join(root, "apps", "streamlit_ui", "app.py"))
 
 app_path = next((c for c in candidates if os.path.isfile(c)), None)
 if app_path is None:
     raise FileNotFoundError(
-        f"Could not find apps/streamlit_ui/app.py under the current "
-        f"working directory ({cwd}) or any of its immediate "
-        f"subdirectories. Checked: {candidates}. If the extracted "
-        f"code is nested more than one folder deep, adjust "
-        f"cml_launcher.py's search to match."
+        f"Could not find app.py starting from the current working "
+        f"directory ({cwd}). Checked: {candidates}. Find app.py's "
+        f"actual absolute path on the box (e.g. from a Session: "
+        f"find /home/cdsw -name app.py) and add it explicitly to "
+        f"cml_launcher.py's candidates list."
     )
 
 result = subprocess.run(
