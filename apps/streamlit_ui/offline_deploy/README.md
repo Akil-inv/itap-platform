@@ -6,13 +6,20 @@ plain `git`, no chat upload needed. `wheelhouse/` and `requirements.txt`
 are gitignored on `main` (build output, not source) but force-added on
 this branch on purpose — see the commit that added them.
 
+For a CML workspace where `pip install` can't reach PyPI. Prebuilt
+wheels for everything `apps/streamlit_ui/requirements.txt` needs
+(streamlit, SQLAlchemy, pandas, openpyxl, psycopg2-binary, and their
+full transitive dependency trees).
+
 ## What's here
 
-- `wheelhouse/linux_x86_64-py311/` — every third-party package
-  `apps/streamlit_ui/requirements.txt` needs (streamlit, SQLAlchemy,
-  pandas, openpyxl, psycopg2-binary, and their full transitive
-  dependency trees) for **Python 3.11 on linux x86_64** — the assumed
-  CML Runtime target (not confirmed at the time this was built).
+- `wheelhouse/linux_x86_64-py38/`, `-py39/`, `-py310/`, `-py311/`,
+  `-py312/` — every third-party package
+  `apps/streamlit_ui/requirements.txt` needs, built separately for
+  each of **Python 3.8 through 3.12 on linux x86_64** — covering the
+  common CML ML Runtime versions (the exact one running on any given
+  CML box isn't something this bundle can detect ahead of time, hence
+  building for all five rather than guessing one).
 - `wheelhouse/macos_arm64-py313/` — the same, for **Python 3.13 on
   Apple Silicon macOS** — added for a local dry-run test on a
   MacBook before touching the actual air-gapped box. This is
@@ -41,6 +48,11 @@ config it needs.
 
 ## Installing
 
+Run this on any machine **with internet access** — it does not have to
+be the air-gapped box, and it doesn't need Python 3.8/3.9/3.10/3.11/
+3.12 actually installed: `pip download` fetches manylinux wheels for a
+target Python version straight from PyPI without executing them.
+
 ```bash
 git clone --branch offline-deps --single-branch <this-repo-url> itap-offline
 cd itap-offline
@@ -51,7 +63,7 @@ bash apps/streamlit_ui/offline_deploy/install_offline.sh
 version)` automatically and installs from the matching
 `wheelhouse/<os>_<arch>-py<version>/` directory with `pip install
 --no-index` — no PyPI access, no compiling. If your combo isn't one of
-the two built, it says so and lists what's available.
+the ones built, it says so and lists what's available.
 
 ## Adding another platform/Python combo
 
@@ -74,12 +86,12 @@ branch (`git add -f`, since the path is gitignored on `main`) and push.
 
 ## What still needs confirming with your CML admin/platform team
 
-- **CPU architecture** — `linux_x86_64-py311` assumes the most common
-  CML Runtime architecture. For arm64 CML Runtimes, a
+- **CPU architecture** — the linux builds all assume the most common
+  CML Runtime architecture (x86_64). For arm64 CML Runtimes, a
   `linux_arm64-pyXY` build is needed instead.
 - **Exact Python version** — check with `python3 --version` in a CML
-  terminal. `py311` was a guess; if it's different, that combo needs
-  building.
+  terminal. If it's outside 3.8-3.12, add it to `PYVERSIONS` (in
+  `main`'s `build_offline_bundle.sh`) and rebuild for it specifically.
 
 See `apps/streamlit_ui/sso_auth.py`'s module docstring (on `main`) for
 the separate (unrelated) set of things a CML admin needs to confirm

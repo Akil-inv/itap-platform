@@ -27,7 +27,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="${1:-$(cd "$HERE/../../.." && pwd)}"
 REQUIREMENTS="$REPO/apps/streamlit_ui/requirements.txt"
-PYVERSIONS=(3.9 3.10 3.11 3.12)
+PYVERSIONS=(3.8 3.9 3.10 3.11 3.12)
 
 if [ ! -f "$REQUIREMENTS" ]; then
   echo "Couldn't find requirements.txt at $REQUIREMENTS" >&2
