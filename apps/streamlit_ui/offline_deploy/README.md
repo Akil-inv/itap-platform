@@ -13,13 +13,16 @@ full transitive dependency trees).
 
 ## What's here
 
-- `wheelhouse/linux_x86_64-py38/`, `-py39/`, `-py310/`, `-py311/`,
-  `-py312/` — every third-party package
-  `apps/streamlit_ui/requirements.txt` needs, built separately for
-  each of **Python 3.8 through 3.12 on linux x86_64** — covering the
-  common CML ML Runtime versions (the exact one running on any given
-  CML box isn't something this bundle can detect ahead of time, hence
-  building for all five rather than guessing one).
+- `wheelhouse/linux_x86_64-py38/`, `-py311/` — every third-party
+  package `apps/streamlit_ui/requirements.txt` needs, built separately
+  for each **confirmed-in-use** Python version on linux x86_64 (py311
+  was the original guess; py38 is a real CML box's actual version,
+  confirmed 2026-09). Only combos someone has actually hit are kept
+  committed here — `build_offline_bundle.sh`'s own `PYVERSIONS` covers
+  3.8-3.12 so building another one is a one-line edit and a re-run
+  (see "Adding another platform/Python combo" below), but committing
+  every possible version speculatively just bloats this branch's
+  download size for versions nobody's confirmed using.
 - `wheelhouse/macos_arm64-py313/` — the same, for **Python 3.13 on
   Apple Silicon macOS** — added for a local dry-run test on a
   MacBook before touching the actual air-gapped box. This is
