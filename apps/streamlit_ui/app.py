@@ -101,6 +101,31 @@ if sso_identity:
             "is provisioned for that identity yet. Ask your ITAP Admin to "
             "onboard you (matching this email), then refresh this page."
         )
+        # Diagnostic aid, not a permanent feature: this only renders
+        # because a Party already exists somewhere (all_parties wasn't
+        # empty, or we wouldn't have reached this branch at all -- see
+        # the `if not all_parties` block above). Whoever hits this
+        # screen has no way to find out who's already been onboarded
+        # (a CML Session can't query the embedded Postgres directly --
+        # it's a separate container with no network path to the
+        # Application's own loopback), but the app itself already has
+        # a live connection, so it can just say who to go ask.
+        owners = party_repo.list_by_type("functional_owner")
+        with st.expander("Already-onboarded accounts (for troubleshooting)"):
+            if owners:
+                st.write("Functional Owner / Admin accounts already exist:")
+                for o in owners:
+                    st.write(f"- {o.display_name} ({o.email})")
+                st.caption(
+                    "One of these can onboard your identity through "
+                    "Workforce Overview → Bulk Setup."
+                )
+            else:
+                st.write(
+                    "No Functional Owner/Admin exists yet, but other "
+                    "accounts do -- check with whoever set this "
+                    "deployment up."
+                )
         st.stop()
     st.session_state["viewer_party_id"] = str(matched.id)
 else:
