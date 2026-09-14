@@ -3,8 +3,8 @@
 For a CML workspace where `pip install` can't reach PyPI. Prebuilt
 wheels for everything `apps/streamlit_ui/requirements.txt` needs
 (streamlit, SQLAlchemy, pandas, openpyxl, psycopg2-binary, and their
-full transitive dependency trees), for four Python versions (3.9,
-3.10, 3.11, 3.12 — covering the common CML ML Runtime versions; the
+full transitive dependency trees), for five Python versions (3.8,
+3.9, 3.10, 3.11, 3.12 — covering the common CML ML Runtime versions; the
 exact one wasn't confirmed when this was built) on **linux x86_64**,
 plus ITAP's own five capability packages (`party_identity`,
 `assignment`, `rbac_scope`, `rotation_plan`, `catalog`) as
@@ -29,7 +29,7 @@ version forever.
 ## Building the bundle
 
 Run this on any machine **with internet access** — it does not have to
-be the air-gapped box, and it doesn't need Python 3.9/3.10/3.12
+be the air-gapped box, and it doesn't need Python 3.8/3.9/3.10/3.12
 actually installed: `pip download` fetches manylinux wheels for a
 target Python version straight from PyPI without executing them.
 
@@ -83,7 +83,7 @@ version's stricter numpy pin instead, and fail outright.
 - **CPU architecture** — this assumes linux x86_64, by far the most
   common CML Runtime architecture. For arm64, see above.
 - **Exact Python version** — check with `python3 --version` in a CML
-  terminal. If it's outside 3.9-3.12, add it to `PYVERSIONS` and
+  terminal. If it's outside 3.8-3.12, add it to `PYVERSIONS` and
   rebuild for it specifically.
 
 See `apps/streamlit_ui/sso_auth.py`'s module docstring for the
