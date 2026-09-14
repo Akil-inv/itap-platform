@@ -16,31 +16,43 @@ Path resolution: this does NOT use `__file__` to find app.py, on
 purpose. CML doesn't run an Application's Script as a normal `python3
 script.py` process -- it executes the file's contents in a cell-like
 context (visible as "Cell In[1], line N" in a CML traceback), where
-`__file__` is simply undefined and raises NameError. Instead this
-relies on CML's own documented convention that an Application always
-runs with its working directory set to the project root (e.g.
-/home/cdsw) -- the same root the "Script" field's own path
-(apps/streamlit_ui/cml_launcher.py) is relative to -- so app.py's path
-relative to that same root is fixed and doesn't need __file__ at all.
+`__file__` is simply undefined and raises NameError.
+
+It also does NOT hardcode "apps/streamlit_ui/app.py" relative to the
+working directory -- an earlier version of this file did, and broke
+the moment the extracted zip/tar landed in a named subfolder (e.g.
+/home/cdsw/itap-platform-offline-deps/apps/streamlit_ui/app.py) rather
+than directly under the project root, since that's exactly what a
+plain "unzip" leaves you with (the zip's top-level folder is whatever
+GitHub named the archive, not "apps"). Instead this searches: the
+working directory itself, then each of its immediate subdirectories,
+for an "apps/streamlit_ui/app.py" suffix -- one level of nesting
+covers "extracted zip into an extra folder," which is the actual
+failure mode this hit, without an expensive deep/recursive search
+(the project directory can contain 100MB+ of wheelhouse files, which a
+recursive glob would waste time walking through).
 """
 import os
 
 port = os.environ["CDSW_APP_PORT"]
+cwd = os.getcwd()
 
-# The expected case (Application working directory = project root, per
-# CML's own convention) first; falls back to "already inside
-# apps/streamlit_ui" in case that assumption doesn't hold on some CML
-# versions/configs -- either way, no reliance on __file__ (see above).
-if os.path.isfile("apps/streamlit_ui/app.py"):
-    app_path = "apps/streamlit_ui/app.py"
-elif os.path.isfile("app.py"):
-    app_path = "app.py"
-else:
+REL_APP_PATH = os.path.join("apps", "streamlit_ui", "app.py")
+
+candidates = [REL_APP_PATH]
+for name in sorted(os.listdir(cwd)):
+    full = os.path.join(cwd, name)
+    if os.path.isdir(full):
+        candidates.append(os.path.join(name, REL_APP_PATH))
+
+app_path = next((c for c in candidates if os.path.isfile(c)), None)
+if app_path is None:
     raise FileNotFoundError(
-        "Could not find app.py from the current working directory "
-        f"({os.getcwd()}) via either 'apps/streamlit_ui/app.py' or "
-        "'app.py' -- check what CWD this CML Application actually runs "
-        "with and adjust cml_launcher.py's path resolution to match."
+        f"Could not find apps/streamlit_ui/app.py under the current "
+        f"working directory ({cwd}) or any of its immediate "
+        f"subdirectories. Checked: {candidates}. If the extracted "
+        f"code is nested more than one folder deep, adjust "
+        f"cml_launcher.py's search to match."
     )
 
 os.execvp(
